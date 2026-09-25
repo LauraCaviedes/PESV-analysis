@@ -1,0 +1,6 @@
+{
+  "name": "PESV Analítica & Asistencia Técnica ANSV",
+  "description": "Plataforma integral de cálculo de indicadores PESV con incertidumbre, verificación de clasificación empresarial, análisis de infracciones y alertas tempranas de asistencia técnica ANSV.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
