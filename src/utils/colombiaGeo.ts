@@ -108,3 +108,75 @@ export function proyectarCoordsSVG(lat: number, lon: number, width = 600, height
 
   return { x, y };
 }
+
+/**
+ * Homologa cualquier nombre de departamento hacia el formato exacto de NOMBRE_DPT en colombia_map.geojson
+ */
+export function homologarNombreDepartamento(nombre: string): string {
+  if (!nombre) return 'SANTAFE DE BOGOTA D.C';
+  const limpio = nombre
+    .toUpperCase()
+    .replace(/[ÁÀÄ]/g, 'A')
+    .replace(/[ÉÈË]/g, 'E')
+    .replace(/[ÍÌÏ]/g, 'I')
+    .replace(/[ÓÒÖ]/g, 'O')
+    .replace(/[ÚÙÜ]/g, 'U')
+    .replace(/[.,]/g, '')
+    .trim();
+
+  if (
+    limpio.includes('BOGOTA') ||
+    limpio.includes('SANTAFE') ||
+    limpio.includes('D C') ||
+    limpio.includes('DC')
+  ) {
+    return 'SANTAFE DE BOGOTA D.C';
+  }
+  if (limpio.includes('SAN ANDRES') || limpio.includes('PROVIDENCIA')) {
+    return 'ARCHIPIELAGO DE SAN ANDRES PROVIDENCIA Y SANTA CATALINA';
+  }
+  if (limpio.includes('VALLE DEL CAUCA') || limpio === 'VALLE') {
+    return 'VALLE DEL CAUCA';
+  }
+  if (limpio.includes('NORTE') && limpio.includes('SANTANDER')) {
+    return 'NORTE DE SANTANDER';
+  }
+  if (limpio === 'SANTANDER') {
+    return 'SANTANDER';
+  }
+  if (limpio.includes('GUAJIRA')) {
+    return 'LA GUAJIRA';
+  }
+  if (limpio.includes('NARINO') || limpio.includes('NARIÑO')) {
+    return 'NARIÑO';
+  }
+
+  return limpio;
+}
+
+/**
+ * Convierte geometría GeoJSON (Polygon o MultiPolygon) a path SVG optimizado
+ */
+export function geojsonCoordsToSvgPath(geometry: any, width = 600, height = 700): string {
+  if (!geometry || !geometry.coordinates) return '';
+
+  const projectPoint = (pt: [number, number]) => {
+    // pt es [lon, lat] en WGS84
+    const { x, y } = proyectarCoordsSVG(pt[1], pt[0], width, height);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  };
+
+  const projectRing = (ring: [number, number][]) => {
+    if (!ring || ring.length === 0) return '';
+    return 'M ' + ring.map(pt => projectPoint(pt)).join(' L ') + ' Z';
+  };
+
+  if (geometry.type === 'Polygon') {
+    return geometry.coordinates.map((ring: any) => projectRing(ring)).join(' ');
+  } else if (geometry.type === 'MultiPolygon') {
+    return geometry.coordinates
+      .map((poly: any) => poly.map((ring: any) => projectRing(ring)).join(' '))
+      .join(' ');
+  }
+  return '';
+}

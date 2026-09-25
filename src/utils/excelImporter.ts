@@ -17,6 +17,8 @@ import {
 } from '../types/pesv';
 import { calcularNivelPESV, verificarIndicadoresEntregados, generarAlertasANSV } from './pesvCalculations';
 import { MUNICIPIOS_CLAVE } from './colombiaGeo';
+import { clasificarMetasTexto } from './textAnalytics';
+import { generarRiesgosDinamicosEmpresa } from './riskHeatmapCalculations';
 
 /**
  * Lee cualquier archivo Excel o CSV y retorna array de objetos JS
@@ -765,6 +767,18 @@ export function convertirExcelConsolidadoAEmpresas(filas: Record<string, any>[])
       deltaInfracciones: Math.round(totalInfracciones * 0.08 * 10) / 10,
     };
 
+    const descMetas = (
+      row['Descripción de las metas del PESV del año finalizado.'] ||
+      row['Descripción de las metas del PESV del año finalizado'] ||
+      row['Descripción de las metas del PESV'] ||
+      row['Metas del PESV'] ||
+      row['Descripción de metas'] ||
+      ''
+    ).toString().trim();
+
+    empresaObj.descripcionMetas = descMetas;
+    empresaObj.metasCategorizadas = clasificarMetasTexto(descMetas);
+    empresaObj.riesgosPaso6 = generarRiesgosDinamicosEmpresa(empresaObj);
     empresaObj.alertas = generarAlertasANSV(empresaObj);
     return empresaObj as EmpresaPESV;
   });

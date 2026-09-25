@@ -11,6 +11,8 @@ import {
   CheckCircle,
   Download,
   Search,
+  Target,
+  ClipboardCheck,
 } from 'lucide-react';
 import { EmpresaPESV, AlertaANSV, TipoAlertaANSV, NivelSeveridad } from '../types/pesv';
 
@@ -85,6 +87,22 @@ const TEMAS_ASISTENCIA: TemaAsistencia[] = [
     descripcion: 'Subsanación de partes faltantes del formulario de autogestión (Categorías B y C) y consolidación de línea base.',
     color: 'text-slate-700 bg-slate-50 border-slate-200',
   },
+  {
+    tipo: 'METAS_DESALINEADAS',
+    titulo: 'Alineación de Objetivos y Metas (Text Analytics)',
+    pasosNorma: [7, 8, 20],
+    icono: Target,
+    descripcion: 'Inconsistencias entre siniestralidad o infracciones y las metas declaradas por la empresa en su autogestión.',
+    color: 'text-indigo-700 bg-indigo-50 border-indigo-200',
+  },
+  {
+    tipo: 'AUDITORIA_NC_ABIERTAS',
+    titulo: 'Auditoría Interna y Cierre de No Conformidades',
+    pasosNorma: [22, 23],
+    icono: ClipboardCheck,
+    descripcion: 'Baja tasa de cierre de no conformidades detectadas en auditoría anual del PESV.',
+    color: 'text-amber-700 bg-amber-50 border-amber-200',
+  },
 ];
 
 export const TechnicalAssistanceView: React.FC<TechnicalAssistanceViewProps> = ({
@@ -155,8 +173,8 @@ export const TechnicalAssistanceView: React.FC<TechnicalAssistanceViewProps> = (
         </div>
 
         {/* Tarjetas Temáticas de Asistencia */}
-        <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {TEMAS_ASISTENCIA.slice(0, 4).map(tema => {
+        <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          {TEMAS_ASISTENCIA.map(tema => {
             const Icon = tema.icono;
             const conteo = conteoPorTema[tema.tipo] || 0;
             const isSelected = temaFiltro === tema.tipo;

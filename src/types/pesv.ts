@@ -145,7 +145,8 @@ export type TipoAlertaANSV =
   | 'FORMACION_DEFICITARIA'
   | 'ALTA_SINIESTRALIDAD'
   | 'AUDITORIA_NC_ABIERTAS'
-  | 'ENTREGA_INCOMPLETA_FORMULARIOS';
+  | 'ENTREGA_INCOMPLETA_FORMULARIOS'
+  | 'METAS_DESALINEADAS';
 
 export type NivelSeveridad = 'BAJA' | 'MEDIA' | 'ALTA' | 'CRÍTICA';
 
@@ -157,6 +158,63 @@ export interface AlertaANSV {
   descripcion: string;
   recomendacionANSV: string;
   pasosPESVAfectados: number[];
+}
+
+// Paso 6: Evaluación y Valoración del Riesgo Vial (Resolución 40595 de 2022)
+export type NivelExposicion = 'Frecuente' | 'Ocasional' | 'Esporádica';
+export type NivelProbabilidad = 'Muy Probable' | 'Poco Probable' | 'No es Probable';
+export type CriticidadRiesgo = 'Crítico' | 'Alto' | 'Medio' | 'Bajo';
+
+export interface ItemRiesgoPaso6 {
+  id: string;
+  factorRiesgo: string; // Ej: Exceso de velocidad, Fatiga / microsueño, Falla en frenos/llantas, Clima/vía mojada, Distracción celular, Interacción peatones/motos, No uso cinturón
+  categoria: 'Velocidad' | 'Fatiga' | 'Vehicular' | 'Infraestructura/Entorno' | 'Comportamiento' | 'Vulnerables';
+  exposicion: NivelExposicion;
+  probabilidad: NivelProbabilidad;
+  criticidad: CriticidadRiesgo;
+  controlesRecomendados: string;
+  responsableSugerido: string;
+}
+
+// Paso 20 (Tabla 10): Series Temporales de Indicadores
+export type FrecuenciaPaso20 = 
+  | 'TRIMESTRAL_Y_ACUMULADO_ANUAL' // Indicadores 1, 2, 4, 5, 10, 11, 12
+  | 'MENSUAL_Y_ACUMULADO_ANUAL'    // Indicadores 6, 7, 8, 9
+  | 'ACUMULADO_ANUAL';             // Indicadores 3, 13
+
+export interface PuntoTemporal {
+  periodo: string; // "T1", "T2", "T3", "T4" o "Ene", "Feb"...
+  periodoEtiqueta: string;
+  valor: number;
+}
+
+export interface SerieTemporalIndicador {
+  indicadorId: string;
+  frecuencia: FrecuenciaPaso20;
+  puntos: PuntoTemporal[];
+  acumuladoAnual: number;
+  tendencia: 'MEJORANDO' | 'ESTABLE' | 'DETERIORANDO';
+  unidad: string;
+}
+
+// Procesamiento de Texto de Metas (Text Analytics)
+export type CategoriaMetaPESV =
+  | 'REDUCCION_SINIESTROS'
+  | 'GESTION_VELOCIDAD'
+  | 'CAPACITACION_Y_FORMACION'
+  | 'MANTENIMIENTO_E_INSPECCION'
+  | 'FATIGA_Y_JORNADAS'
+  | 'CERO_TOLERANCIA_SUSTANCIAS'
+  | 'CINTURON_Y_EPP'
+  | 'AUDITORIA_Y_MEJORA';
+
+export interface MetaCategorizada {
+  categoria: CategoriaMetaPESV;
+  nombreCategoria: string;
+  palabrasClaveEncontradas: string[];
+  extractoTexto: string;
+  metaCuantificada?: string; // Ej: "-15%", "100%", "95%"
+  relevancia: number; // 1-5
 }
 
 export interface EmpresaPESV {
@@ -208,6 +266,16 @@ export interface EmpresaPESV {
 
   // Alertas ANSV identificadas
   alertas: AlertaANSV[];
+
+  // Paso 6: Valoración de Riesgos Viales
+  riesgosPaso6?: ItemRiesgoPaso6[];
+
+  // Paso 7: Descripción y Text Analytics de Metas
+  descripcionMetas?: string;
+  metasCategorizadas?: MetaCategorizada[];
+
+  // Paso 20: Series Temporales (Trimestral/Mensual/Anual según Tabla 10)
+  seriesTemporales?: Record<string, SerieTemporalIndicador>;
 }
 
 export interface ResumenIncertidumbre {

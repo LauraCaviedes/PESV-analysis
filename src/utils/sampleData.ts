@@ -7,6 +7,8 @@
 import { EmpresaPESV, NivelPESV, Misionalidad, CategoriaFormulario, IndicadoresPESV } from '../types/pesv';
 import { calcularNivelPESV, verificarIndicadoresEntregados, generarAlertasANSV } from './pesvCalculations';
 import { MUNICIPIOS_CLAVE } from './colombiaGeo';
+import { clasificarMetasTexto } from './textAnalytics';
+import { generarRiesgosDinamicosEmpresa } from './riskHeatmapCalculations';
 
 interface EmpresaBaseRaw {
   razonSocial: string;
@@ -1248,6 +1250,19 @@ export function hidratarEmpresa(raw: EmpresaBaseRaw, index: number): EmpresaPESV
     deltaInfracciones: Math.round(totalInfracciones * 0.08 * 10) / 10,
   };
 
+  // Generar descripción representativa de metas según sector y perfil para Text Analytics (Paso 7)
+  let textoMetas = 'Reducir la siniestralidad vial en 15% mediante capacitación al 95% de conductores en manejo preventivo y velocidad segura.';
+  if (raw.misionalidad === 'Misionalidad 1') {
+    textoMetas = `Reducir siniestros viales con fatalidades y choques graves en un 20%, implementar control telemático de velocidad por GPS al 100% de la flota, garantizar pausas activas contra la fatiga laboral y cero tolerancia al alcohol.`;
+  } else if (raw.sectorEconomico.includes('Comercio')) {
+    textoMetas = `Capacitar al 90% de colaboradores en seguridad vial, reducir infracciones de tránsito C29, asegurar 100% de inspecciones preoperacionales y mantenimiento preventivo.`;
+  } else if (raw.sectorEconomico.includes('Construcción') || raw.sectorEconomico.includes('minas')) {
+    textoMetas = `Disminuir riesgos de volcamientos en maquinaria pesada, inspección diaria preoperacional obligatoria, control de fatiga y jornadas y uso de cinturón de seguridad y EPP.`;
+  }
+
+  empresaObj.descripcionMetas = textoMetas;
+  empresaObj.metasCategorizadas = clasificarMetasTexto(textoMetas);
+  empresaObj.riesgosPaso6 = generarRiesgosDinamicosEmpresa(empresaObj);
   empresaObj.alertas = generarAlertasANSV(empresaObj);
   return empresaObj as EmpresaPESV;
 }

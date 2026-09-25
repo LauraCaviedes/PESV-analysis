@@ -1,357 +1,589 @@
-import React, { useState } from 'react';
-import { MapPin, Navigation, Building2, Search, Filter } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  MapPin,
+  Building2,
+  Search,
+  Filter,
+  Layers,
+  TrendingDown,
+  AlertTriangle,
+  Car,
+  Users,
+  Compass,
+  FileSpreadsheet,
+  Loader2,
+} from 'lucide-react';
 import { EmpresaPESV } from '../types/pesv';
-import { DEPARTAMENTOS_COLOMBIA, proyectarCoordsSVG } from '../utils/colombiaGeo';
+import {
+  DEPARTAMENTOS_COLOMBIA,
+  homologarNombreDepartamento,
+  geojsonCoordsToSvgPath,
+  proyectarCoordsSVG,
+} from '../utils/colombiaGeo';
 
 interface GeoDistributionViewProps {
   empresas: EmpresaPESV[];
   onSeleccionarEmpresa: (empresa: EmpresaPESV) => void;
 }
 
+interface DepartamentoGeoFeature {
+  nombreDpt: string;
+  codigoDpto: string;
+  svgPaths: string[];
+  centroidLat: number;
+  centroidLon: number;
+}
+
 export const GeoDistributionView: React.FC<GeoDistributionViewProps> = ({
   empresas,
   onSeleccionarEmpresa,
 }) => {
-  const [deptoSeleccionado, setDeptoSeleccionado] = useState<string | null>(null);
-  const [metricaBurbuja, setMetricaBurbuja] = useState<'EMPRESAS' | 'FLOTA' | 'SINIESTROS'>('EMPRESAS');
+  const [geoData, setGeoData] = useState<any | null>(null);
+  const [cargandoGeo, setCargandoGeo] = useState<boolean>(true);
+  const [deptoSeleccionado, setDeptoSeleccionado] = useState<string>('SANTAFE DE BOGOTA D.C');
+  const [deptoHovered, setDeptoHovered] = useState<string | null>(null);
+  const [metricaCoropletica, setMetricaCoropletica] = useState<
+    'EMPRESAS' | 'FLOTA' | 'TSV' | 'INFRACCIONES'
+  >('EMPRESAS');
   const [busquedaDepto, setBusquedaDepto] = useState<string>('');
 
-  // Agrupar empresas por Departamento
-  const conteosPorDepto = empresas.reduce((acc, e) => {
-    const dep = (e.departamento || 'BOGOTÁ, D.C.').toUpperCase().trim();
-    if (!acc[dep]) {
-      acc[dep] = {
-        nombre: dep,
+  // 1. Cargar el GeoJSON oficial de Colombia (colombia_map.geojson generado desde santiblanko mpio.json)
+  useEffect(() => {
+    let cancelado = false;
+    setCargandoGeo(true);
+
+    fetch('/colombia_map.geojson')
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then(json => {
+        if (!cancelado) {
+          setGeoData(json);
+          setCargandoGeo(false);
+        }
+      })
+      .catch(err => {
+        console.warn('Carga de GeoJSON local:', err);
+        if (!cancelado) {
+          setCargandoGeo(false);
+        }
+      });
+
+    return () => {
+      cancelado = true;
+    };
+  }, []);
+
+  // 2. Agrupar y Homologar empresas por Departamento según la propiedad NOMBRE_DPT
+  const datosPorDepto = useMemo(() => {
+    const mapa: Record<
+      string,
+      {
+        nombreDpt: string;
+        nombreComun: string;
+        codigoDpto: string;
+        empresas: EmpresaPESV[];
+        totalVehiculos: number;
+        totalConductores: number;
+        totalInfracciones: number;
+        tsvPromedio: number;
+        discrepancias: number;
+      }
+    > = {};
+
+    // Inicializar con la lista maestra de departamentos
+    for (const dep of DEPARTAMENTOS_COLOMBIA) {
+      const canonico = homologarNombreDepartamento(dep.nombre);
+      mapa[canonico] = {
+        nombreDpt: canonico,
+        nombreComun: dep.nombre,
+        codigoDpto: dep.codigo,
         empresas: [],
         totalVehiculos: 0,
         totalConductores: 0,
-        totalSiniestros: 0,
+        totalInfracciones: 0,
+        tsvPromedio: 0,
+        discrepancias: 0,
       };
     }
-    acc[dep].empresas.push(e);
-    acc[dep].totalVehiculos += e.flota.totalVehiculos;
-    acc[dep].totalConductores += e.conductores.totalConductoresNorma;
-    acc[dep].totalSiniestros += Math.round((e.indicadores.tsvTotal * e.indicadores.kmRecorridosTrimestre) / 1000000);
-    return acc;
-  }, {} as Record<string, { nombre: string; empresas: EmpresaPESV[]; totalVehiculos: number; totalConductores: number; totalSiniestros: number }>);
 
-  // Lista de departamentos ordenada por cantidad de empresas
-  const deptosOrdenados = Object.values(conteosPorDepto).sort(
-    (a, b) => b.empresas.length - a.empresas.length
-  );
+    // Agregar empresas homologadas
+    for (const emp of empresas) {
+      const canonico = homologarNombreDepartamento(emp.departamento);
+      if (!mapa[canonico]) {
+        mapa[canonico] = {
+          nombreDpt: canonico,
+          nombreComun: emp.departamento,
+          codigoDpto: '00',
+          empresas: [],
+          totalVehiculos: 0,
+          totalConductores: 0,
+          totalInfracciones: 0,
+          tsvPromedio: 0,
+          discrepancias: 0,
+        };
+      }
+      mapa[canonico].empresas.push(emp);
+      mapa[canonico].totalVehiculos += emp.flota.totalVehiculos;
+      mapa[canonico].totalConductores += emp.conductores.totalConductoresNorma;
+      mapa[canonico].totalInfracciones += emp.infracciones.totalInfracciones;
+      if (!emp.esClasificacionCorrecta) {
+        mapa[canonico].discrepancias++;
+      }
+    }
 
-  const deptosFiltrados = deptosOrdenados.filter(d =>
-    d.nombre.toLowerCase().includes(busquedaDepto.toLowerCase())
-  );
+    // Calcular promedios
+    for (const k of Object.keys(mapa)) {
+      const item = mapa[k];
+      if (item.empresas.length > 0) {
+        const sumaTsv = item.empresas.reduce((acc, e) => acc + e.indicadores.tsvTotal, 0);
+        item.tsvPromedio = Math.round((sumaTsv / item.empresas.length) * 100) / 100;
+      }
+    }
 
-  const maxEmpresas = Math.max(...deptosOrdenados.map(d => d.empresas.length), 1);
-  const maxFlota = Math.max(...deptosOrdenados.map(d => d.totalVehiculos), 1);
+    return mapa;
+  }, [empresas]);
 
-  // Departamento actualmente enfocado
-  const deptoActivo = deptoSeleccionado
-    ? conteosPorDepto[deptoSeleccionado] || null
-    : deptosOrdenados[0] || null;
+  // 3. Procesar las Geometrías GeoJSON por NOMBRE_DPT
+  const featuresDepartamentos = useMemo(() => {
+    if (!geoData || !geoData.features) return [];
+
+    const agrupados: Record<
+      string,
+      {
+        nombreDpt: string;
+        codigoDpto: string;
+        svgPaths: string[];
+        lats: number[];
+        lons: number[];
+      }
+    > = {};
+
+    for (const feat of geoData.features) {
+      const props = feat.properties || {};
+      const dptNombre = (props.NOMBRE_DPT || props.NOMBRE_DEPTO || props.dpto || '').toString().trim().toUpperCase();
+      const canonico = homologarNombreDepartamento(dptNombre);
+      const cod = (props.DPTO || props.COD_DPTO || '').toString().trim();
+
+      if (!agrupados[canonico]) {
+        agrupados[canonico] = {
+          nombreDpt: canonico,
+          codigoDpto: cod,
+          svgPaths: [],
+          lats: [],
+          lons: [],
+        };
+      }
+
+      const pathStr = geojsonCoordsToSvgPath(feat.geometry, 600, 720);
+      if (pathStr) {
+        agrupados[canonico].svgPaths.push(pathStr);
+      }
+    }
+
+    const resultado: DepartamentoGeoFeature[] = Object.values(agrupados).map(d => {
+      // Buscar centroide en DEPARTAMENTOS_COLOMBIA
+      const base = DEPARTAMENTOS_COLOMBIA.find(
+        dep => homologarNombreDepartamento(dep.nombre) === d.nombreDpt
+      );
+
+      return {
+        nombreDpt: d.nombreDpt,
+        codigoDpto: d.codigoDpto || base?.codigo || '00',
+        svgPaths: d.svgPaths,
+        centroidLat: base?.lat || 4.6,
+        centroidLon: base?.lon || -74.1,
+      };
+    });
+
+    return resultado;
+  }, [geoData]);
+
+  // 4. Rangos de la métrica activa para la escala de color Coroplética
+  const valoresMetrica = useMemo(() => {
+    return Object.values(datosPorDepto).map(d => {
+      if (metricaCoropletica === 'EMPRESAS') return d.empresas.length;
+      if (metricaCoropletica === 'FLOTA') return d.totalVehiculos;
+      if (metricaCoropletica === 'TSV') return d.tsvPromedio;
+      return d.totalInfracciones;
+    });
+  }, [datosPorDepto, metricaCoropletica]);
+
+  const maxMetrica = Math.max(...valoresMetrica, 1);
+  const minMetrica = Math.min(...valoresMetrica, 0);
+
+  // Función de escala de color Coroplética (Escala Azul/Índigo/Púrpura de alta legibilidad)
+  const obtenerColorCoropletico = (valor: number) => {
+    if (valor === 0) return '#f1f5f9'; // Sin datos (slate-100)
+    const ratio = Math.min(1, Math.max(0, (valor - minMetrica) / (maxMetrica - minMetrica || 1)));
+
+    if (metricaCoropletica === 'TSV' || metricaCoropletica === 'INFRACCIONES') {
+      // Escala cálida de riesgo para siniestralidad e infracciones (Ámbar a Rojo oscuro)
+      if (ratio < 0.25) return '#fef3c7'; // ámbar muy claro
+      if (ratio < 0.5) return '#fde047';  // amarillo
+      if (ratio < 0.75) return '#f97316'; // naranja
+      return '#dc2626'; // rojo oscuro
+    }
+
+    // Escala fría para volumen de empresas y flota (Celeste a Azul Marino)
+    if (ratio < 0.2) return '#e0f2fe';
+    if (ratio < 0.4) return '#93c5fd';
+    if (ratio < 0.7) return '#3b82f6';
+    if (ratio < 0.9) return '#1d4ed8';
+    return '#1e3a8a';
+  };
+
+  // Departamento actualmente enfocado en el panel derecho
+  const deptoActivo = useMemo(() => {
+    return (
+      datosPorDepto[deptoSeleccionado] ||
+      Object.values(datosPorDepto).find(d => d.empresas.length > 0) ||
+      Object.values(datosPorDepto)[0]
+    );
+  }, [datosPorDepto, deptoSeleccionado]);
+
+  // Lista ordenada de departamentos para el selector y ranking
+  const deptosRanking = useMemo(() => {
+    return Object.values(datosPorDepto)
+      .filter(d => d.nombreComun.toLowerCase().includes(busquedaDepto.toLowerCase()))
+      .sort((a, b) => b.empresas.length - a.empresas.length);
+  }, [datosPorDepto, busquedaDepto]);
 
   return (
     <div className="space-y-6">
-      {/* Header explicativo */}
+      {/* Header del Mapa Territorial */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200">
+                GeoJSON Colombia · EPSG:4326 (WGS84)
+              </span>
+              <span className="text-xs text-slate-500 font-semibold">
+                Homologación Territorial por NOMBRE_DPT
+              </span>
+            </div>
+            <h2 className="text-base font-bold text-slate-900 mt-1 flex items-center gap-2">
               <MapPin className="w-5 h-5 text-blue-600" />
-              Distribución Territorial de Empresas y Siniestralidad Vial
+              Mapa Coroplético Territorial de Seguridad Vial
             </h2>
-            <p className="text-xs text-slate-500 mt-1">
-              Visualización geoespacial de centros operativos en Colombia (reproducción del análisis Seaborn y centroides EPSG:4326 del código fuente).
+            <p className="text-xs text-slate-500 mt-0.5">
+              Consumo dinámico del archivo GeoJSON de Colombia con mapeo de polígonos departamentales y vinculación analítica de organizaciones.
             </p>
           </div>
 
+          {/* Selector de Métrica Coroplética */}
           <div className="flex items-center gap-2 text-xs">
-            <span className="text-slate-500">Métrica del Mapa:</span>
+            <span className="text-slate-500 font-semibold">Capa Coroplética:</span>
             <div className="flex rounded-lg bg-slate-100 p-0.5 border border-slate-200">
               <button
-                onClick={() => setMetricaBurbuja('EMPRESAS')}
+                onClick={() => setMetricaCoropletica('EMPRESAS')}
                 className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
-                  metricaBurbuja === 'EMPRESAS'
-                    ? 'bg-white text-slate-900 shadow-xs'
+                  metricaCoropletica === 'EMPRESAS'
+                    ? 'bg-blue-600 text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 N° Empresas
               </button>
               <button
-                onClick={() => setMetricaBurbuja('FLOTA')}
+                onClick={() => setMetricaCoropletica('FLOTA')}
                 className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
-                  metricaBurbuja === 'FLOTA'
-                    ? 'bg-white text-slate-900 shadow-xs'
+                  metricaCoropletica === 'FLOTA'
+                    ? 'bg-blue-600 text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                Flota Vehicular
+                Flota
               </button>
               <button
-                onClick={() => setMetricaBurbuja('SINIESTROS')}
+                onClick={() => setMetricaCoropletica('TSV')}
                 className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
-                  metricaBurbuja === 'SINIESTROS'
-                    ? 'bg-white text-slate-900 shadow-xs'
+                  metricaCoropletica === 'TSV'
+                    ? 'bg-blue-600 text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                Siniestros
+                TSV Promedio
+              </button>
+              <button
+                onClick={() => setMetricaCoropletica('INFRACCIONES')}
+                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                  metricaCoropletica === 'INFRACCIONES'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Infracciones
               </button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Grid: Mapa Interactivo a la izquierda + Panel de Detalle a la derecha */}
+      {/* Grid: Mapa Coroplético (Izquierda) + Panel de Detalle Departamental (Derecha) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Mapa SVG interactivo */}
+        {/* Mapa SVG Coroplético */}
         <div className="lg:col-span-7 bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col items-center">
           <div className="w-full flex items-center justify-between text-xs text-slate-500 mb-2">
-            <span className="font-semibold text-slate-700">Territorio Nacional de Colombia</span>
-            <span className="font-mono text-[11px]">EPSG:4326 · WGS84</span>
+            <span className="font-semibold text-slate-700 flex items-center gap-1.5">
+              <Layers className="w-4 h-4 text-indigo-600" />
+              Sombreado Coroplético Departamental
+            </span>
+            <span className="font-mono text-[11px] text-slate-400">
+              {featuresDepartamentos.length > 0 ? 'GeoJSON Activo' : 'Cargando geometrías...'}
+            </span>
           </div>
 
-          <div className="relative w-full max-w-[480px] aspect-[6/7] bg-slate-50 rounded-xl border border-slate-200 p-3 overflow-hidden flex items-center justify-center">
-            <svg
-              viewBox="0 0 600 700"
-              className="w-full h-full select-none"
-              style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.04))' }}
-            >
-              {/* Contorno simplificado y elegante de Colombia */}
-              <path
-                d="M 180,60 
-                   Q 220,40 280,30 
-                   Q 350,20 400,50 
-                   Q 440,70 420,110 
-                   Q 410,140 430,170 
-                   Q 470,200 450,250 
-                   Q 430,300 480,330 
-                   Q 510,380 470,440 
-                   Q 430,490 400,550 
-                   Q 380,620 340,680 
-                   Q 310,640 280,590 
-                   Q 240,540 210,480 
-                   Q 170,430 150,380 
-                   Q 120,330 140,280 
-                   Q 160,230 150,180 
-                   Q 140,130 180,60 Z"
-                fill="#f1f5f9"
-                stroke="#cbd5e1"
-                strokeWidth="2"
-                strokeDasharray="4 2"
-              />
+          <div className="relative w-full max-w-[500px] aspect-[6/7] bg-slate-50 rounded-xl border border-slate-200 p-2 overflow-hidden flex items-center justify-center">
+            {cargandoGeo && featuresDepartamentos.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 text-slate-400 text-xs">
+                <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                <span>Renderizando polígonos GeoJSON de Colombia...</span>
+              </div>
+            ) : (
+              <svg
+                viewBox="0 0 600 720"
+                className="w-full h-full select-none"
+                style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.04))' }}
+              >
+                {/* 1. Polígonos de Municipios/Departamentos del GeoJSON */}
+                {featuresDepartamentos.map(feat => {
+                  const info = datosPorDepto[feat.nombreDpt];
+                  let valor = 0;
+                  if (info) {
+                    if (metricaCoropletica === 'EMPRESAS') valor = info.empresas.length;
+                    else if (metricaCoropletica === 'FLOTA') valor = info.totalVehiculos;
+                    else if (metricaCoropletica === 'TSV') valor = info.tsvPromedio;
+                    else valor = info.totalInfracciones;
+                  }
 
-              {/* Burbujas geolocalizadas por departamento */}
-              {DEPARTAMENTOS_COLOMBIA.map(dep => {
-                const info = conteosPorDepto[dep.nombre.toUpperCase()];
-                const count = info ? info.empresas.length : 0;
-                const { x, y } = proyectarCoordsSVG(dep.lat, dep.lon, 600, 700);
+                  const fillColor = obtenerColorCoropletico(valor);
+                  const isSelected = deptoSeleccionado === feat.nombreDpt;
+                  const isHovered = deptoHovered === feat.nombreDpt;
 
-                // Si no hay empresas en este depto, mostrar punto tenue
-                if (count === 0) {
                   return (
-                    <circle
-                      key={dep.codigo}
-                      cx={x}
-                      cy={y}
-                      r={3}
-                      fill="#cbd5e1"
-                      opacity="0.5"
-                    />
+                    <g
+                      key={feat.nombreDpt}
+                      className="cursor-pointer transition-all duration-200"
+                      onClick={() => setDeptoSeleccionado(feat.nombreDpt)}
+                      onMouseEnter={() => setDeptoHovered(feat.nombreDpt)}
+                      onMouseLeave={() => setDeptoHovered(null)}
+                    >
+                      {feat.svgPaths.map((d, pIdx) => (
+                        <path
+                          key={pIdx}
+                          d={d}
+                          fill={fillColor}
+                          stroke={isSelected ? '#1e40af' : isHovered ? '#3b82f6' : '#cbd5e1'}
+                          strokeWidth={isSelected ? '2' : isHovered ? '1.5' : '0.6'}
+                          className="transition-colors"
+                        />
+                      ))}
+                    </g>
                   );
-                }
+                })}
 
-                // Cálculo de radio y color según métrica (simulando paleta 'viridis' de Seaborn solicitada)
-                let r = 8;
-                let valorMetrica = count;
-                if (metricaBurbuja === 'EMPRESAS') {
-                  r = 8 + (count / maxEmpresas) * 26;
-                  valorMetrica = count;
-                } else if (metricaBurbuja === 'FLOTA') {
-                  const flota = info.totalVehiculos;
-                  r = 8 + (flota / maxFlota) * 26;
-                  valorMetrica = flota;
-                } else {
-                  r = 8 + Math.min(info.totalSiniestros * 3, 28);
-                  valorMetrica = info.totalSiniestros;
-                }
+                {/* 2. Marcadores y Etiquetas sobre los centroides de los departamentos con empresas */}
+                {DEPARTAMENTOS_COLOMBIA.map(dep => {
+                  const canonico = homologarNombreDepartamento(dep.nombre);
+                  const info = datosPorDepto[canonico];
+                  const count = info ? info.empresas.length : 0;
+                  if (count === 0) return null;
 
-                const isSelected = deptoActivo?.nombre === dep.nombre.toUpperCase();
+                  const { x, y } = proyectarCoordsSVG(dep.lat, dep.lon, 600, 720);
+                  const isSelected = deptoSeleccionado === canonico;
 
-                return (
-                  <g
-                    key={dep.codigo}
-                    className="cursor-pointer transition-transform"
-                    onClick={() => setDeptoSeleccionado(dep.nombre.toUpperCase())}
-                  >
-                    {/* Anillo de pulso si está seleccionado */}
-                    {isSelected && (
+                  return (
+                    <g
+                      key={dep.codigo}
+                      className="cursor-pointer pointer-events-none"
+                    >
+                      {isSelected && (
+                        <circle
+                          cx={x}
+                          cy={y}
+                          r={16}
+                          fill="none"
+                          stroke="#2563eb"
+                          strokeWidth="2"
+                          strokeDasharray="3 2"
+                        />
+                      )}
                       <circle
                         cx={x}
                         cy={y}
-                        r={r + 6}
-                        fill="none"
-                        stroke="#2563eb"
-                        strokeWidth="2"
-                        opacity="0.6"
+                        r={count > 5 ? 10 : 8}
+                        fill="#1e293b"
+                        stroke="#ffffff"
+                        strokeWidth="1.5"
                       />
-                    )}
-
-                    <circle
-                      cx={x}
-                      cy={y}
-                      r={r}
-                      fill={isSelected ? '#2563eb' : '#0e3d8b'}
-                      opacity="0.75"
-                      stroke="#ffffff"
-                      strokeWidth="1.5"
-                    />
-
-                    {/* Etiqueta de texto si tiene varias empresas */}
-                    {count >= 1 && (
                       <text
                         x={x}
-                        y={y + 3}
+                        y={y + 3.5}
                         textAnchor="middle"
-                        fill="#ffffff"
-                        fontSize="9"
-                        fontWeight="bold"
-                        fontFamily="monospace"
+                        className="text-[9px] font-mono font-bold fill-white"
                       >
                         {count}
                       </text>
-                    )}
+                    </g>
+                  );
+                })}
+              </svg>
+            )}
 
-                    {/* Nombre del departamento flotante */}
-                    <text
-                      x={x}
-                      y={y - r - 4}
-                      textAnchor="middle"
-                      fill="#334155"
-                      fontSize="9"
-                      fontWeight={isSelected ? 'bold' : 'normal'}
-                    >
-                      {dep.capital}
-                    </text>
-                  </g>
-                );
-              })}
-            </svg>
+            {/* Tooltip flotante al pasar el mouse por un departamento */}
+            {deptoHovered && datosPorDepto[deptoHovered] && (
+              <div className="absolute top-3 left-3 bg-slate-900/90 text-white p-2.5 rounded-lg shadow-lg text-xs pointer-events-none border border-slate-700">
+                <div className="font-bold text-sm text-blue-300">
+                  {datosPorDepto[deptoHovered].nombreComun}
+                </div>
+                <div className="text-[10px] text-slate-400 font-mono">
+                  DANE: {datosPorDepto[deptoHovered].codigoDpto} · NOMBRE_DPT: {deptoHovered}
+                </div>
+                <div className="mt-1 pt-1 border-t border-slate-700/80 space-y-0.5 font-mono text-[11px]">
+                  <div>Empresas: <strong>{datosPorDepto[deptoHovered].empresas.length}</strong></div>
+                  <div>Flota Vehicular: <strong>{datosPorDepto[deptoHovered].totalVehiculos}</strong></div>
+                  <div>TSV Promedio: <strong>{datosPorDepto[deptoHovered].tsvPromedio.toFixed(2)}</strong></div>
+                  <div>Infracciones: <strong>{datosPorDepto[deptoHovered].totalInfracciones}</strong></div>
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="w-full mt-3 flex items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-100">
-            <span>Haz clic en un círculo para ver las empresas de esa región</span>
-            <div className="flex items-center gap-2 font-mono text-[10px]">
-              <span className="flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#0e3d8b]"></span> Concentración PESV
-              </span>
+          {/* Barra de Escala de Color Coroplética */}
+          <div className="w-full max-w-[500px] mt-4 flex items-center justify-between text-xs text-slate-500">
+            <span className="font-mono text-[11px]">Baja Intensidad ({minMetrica})</span>
+            <div className="flex-1 mx-3 h-2.5 rounded-full overflow-hidden flex border border-slate-200">
+              {metricaCoropletica === 'TSV' || metricaCoropletica === 'INFRACCIONES' ? (
+                <>
+                  <div className="flex-1 bg-[#fef3c7]" />
+                  <div className="flex-1 bg-[#fde047]" />
+                  <div className="flex-1 bg-[#f97316]" />
+                  <div className="flex-1 bg-[#dc2626]" />
+                </>
+              ) : (
+                <>
+                  <div className="flex-1 bg-[#e0f2fe]" />
+                  <div className="flex-1 bg-[#93c5fd]" />
+                  <div className="flex-1 bg-[#3b82f6]" />
+                  <div className="flex-1 bg-[#1d4ed8]" />
+                  <div className="flex-1 bg-[#1e3a8a]" />
+                </>
+              )}
             </div>
+            <span className="font-mono text-[11px] font-bold text-slate-800">
+              Alta ({maxMetrica})
+            </span>
           </div>
         </div>
 
-        {/* Panel lateral: Detalle de Departamento y Lista de Empresas */}
-        <div className="lg:col-span-5 space-y-4">
-          {/* Tarjeta de Resumen del Departamento Seleccionado */}
-          {deptoActivo ? (
-            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <div>
-                  <span className="text-[10px] font-mono text-blue-600 font-bold uppercase">
-                    Departamento Seleccionado
-                  </span>
-                  <h3 className="text-base font-bold text-slate-900 mt-0.5">
-                    {deptoActivo.nombre}
-                  </h3>
-                </div>
-                <span className="text-xs font-mono font-bold px-2 py-1 bg-blue-50 text-blue-800 rounded-lg">
-                  {deptoActivo.empresas.length} empresas
+        {/* Panel Lateral: Detalle del Departamento Seleccionado */}
+        <div className="lg:col-span-5 space-y-5">
+          {/* Tarjeta de Resumen Departamental */}
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
+            <div className="flex items-start justify-between pb-3 border-b border-slate-100">
+              <div>
+                <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                  DANE: {deptoActivo.codigoDpto}
+                </span>
+                <h3 className="text-base font-bold text-slate-900 mt-1">
+                  {deptoActivo.nombreComun}
+                </h3>
+                <span className="text-[11px] font-mono text-slate-400 block">
+                  Propiedad GeoJSON: {deptoActivo.nombreDpt}
                 </span>
               </div>
 
-              <div className="grid grid-cols-3 gap-2 py-3 text-xs">
-                <div className="p-2.5 bg-slate-50 rounded-lg text-center">
-                  <span className="text-[10px] text-slate-500 block">Flota Total</span>
-                  <span className="text-sm font-mono font-bold text-slate-800 tabular-nums">
-                    {deptoActivo.totalVehiculos}
-                  </span>
-                </div>
-                <div className="p-2.5 bg-slate-50 rounded-lg text-center">
-                  <span className="text-[10px] text-slate-500 block">Conductores</span>
-                  <span className="text-sm font-mono font-bold text-slate-800 tabular-nums">
-                    {deptoActivo.totalConductores}
-                  </span>
-                </div>
-                <div className="p-2.5 bg-slate-50 rounded-lg text-center">
-                  <span className="text-[10px] text-slate-500 block">Siniestros</span>
-                  <span className="text-sm font-mono font-bold text-red-700 tabular-nums">
-                    {deptoActivo.totalSiniestros}
-                  </span>
-                </div>
-              </div>
-
-              {/* Lista de Empresas en este Departamento */}
-              <div className="mt-2 space-y-2">
-                <span className="text-xs font-bold text-slate-700 block">
-                  Empresas en {deptoActivo.nombre}:
+              <div className="text-right">
+                <span className="text-2xl font-black font-mono text-blue-900 block">
+                  {deptoActivo.empresas.length}
                 </span>
-                <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
-                  {deptoActivo.empresas.map(emp => (
-                    <div
-                      key={emp.id}
-                      onClick={() => onSeleccionarEmpresa(emp)}
-                      className="p-2.5 rounded-lg border border-slate-100 hover:border-blue-300 hover:bg-blue-50/30 transition-colors cursor-pointer text-xs"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-slate-900 truncate max-w-[200px]">
-                          {emp.razonSocial}
-                        </span>
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
-                          {emp.clasificacionCalculada}
-                        </span>
+                <span className="text-[11px] text-slate-500 font-medium">empresas en sede</span>
+              </div>
+            </div>
+
+            {/* KPIs Clave del Departamento */}
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-[11px] text-slate-500 block">Flota Total Reportada:</span>
+                <span className="text-sm font-bold font-mono text-slate-900 block mt-0.5">
+                  {deptoActivo.totalVehiculos} vehículos
+                </span>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-[11px] text-slate-500 block">Censo de Conductores:</span>
+                <span className="text-sm font-bold font-mono text-slate-900 block mt-0.5">
+                  {deptoActivo.totalConductores} colaboradores
+                </span>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-[11px] text-slate-500 block">TSV Promedio:</span>
+                <span className="text-sm font-bold font-mono text-blue-900 block mt-0.5">
+                  {deptoActivo.tsvPromedio.toFixed(2)} por 1M km
+                </span>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-[11px] text-slate-500 block">Comparendos Detectados:</span>
+                <span className="text-sm font-bold font-mono text-amber-900 block mt-0.5">
+                  {deptoActivo.totalInfracciones} infracciones
+                </span>
+              </div>
+            </div>
+
+            {/* Discrepancias en el departamento */}
+            {deptoActivo.discrepancias > 0 && (
+              <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-900 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                <span>
+                  Hay <strong>{deptoActivo.discrepancias} empresa(s)</strong> con discrepancia en su nivel PESV en este departamento.
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Lista de Empresas en este Departamento */}
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-3">
+            <h4 className="text-xs font-bold text-slate-900 flex items-center justify-between pb-2 border-b border-slate-100">
+              <span>Organizaciones en {deptoActivo.nombreComun}</span>
+              <span className="font-mono text-slate-500 font-normal">
+                {deptoActivo.empresas.length} organizaciones
+              </span>
+            </h4>
+
+            {deptoActivo.empresas.length === 0 ? (
+              <div className="py-6 text-center text-xs text-slate-400">
+                No hay empresas registradas con sede en este departamento.
+              </div>
+            ) : (
+              <div className="max-h-[260px] overflow-y-auto space-y-2 pr-1">
+                {deptoActivo.empresas.map(emp => (
+                  <div
+                    key={emp.id}
+                    onClick={() => onSeleccionarEmpresa(emp)}
+                    className="p-2.5 rounded-lg border border-slate-200 hover:border-blue-300 hover:bg-blue-50/40 transition-colors cursor-pointer flex items-center justify-between text-xs"
+                  >
+                    <div>
+                      <div className="font-semibold text-slate-900 truncate max-w-[220px]">
+                        {emp.razonSocial}
                       </div>
-                      <div className="text-[11px] text-slate-500 mt-1 flex justify-between">
-                        <span>{emp.municipio}</span>
-                        <span className="font-mono">TSV: {emp.indicadores.tsvTotal.toFixed(2)}</span>
+                      <div className="text-[10px] text-slate-500 font-mono">
+                        NIT: {emp.numeroDocumento} · {emp.municipio}
                       </div>
                     </div>
-                  ))}
-                </div>
+                    <div className="text-right font-mono shrink-0">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-800 font-medium">
+                        {emp.clasificacionCalculada}
+                      </span>
+                      <div className="text-[10px] text-slate-500 mt-0.5">
+                        {emp.flota.totalVehiculos} veh
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
-          ) : (
-            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs text-center text-slate-400 text-xs">
-              Selecciona un departamento en el mapa
-            </div>
-          )}
-
-          {/* Ranking General de Departamentos */}
-          <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="text-xs font-bold text-slate-800">
-                Ranking Territorial por Cantidad de Sedes
-              </h4>
-              <span className="text-[10px] font-mono text-slate-400">
-                {deptosOrdenados.length} territorios
-              </span>
-            </div>
-
-            <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1 text-xs">
-              {deptosOrdenados.slice(0, 8).map(d => (
-                <button
-                  key={d.nombre}
-                  onClick={() => setDeptoSeleccionado(d.nombre)}
-                  className={`w-full flex items-center justify-between p-1.5 rounded transition-colors text-left cursor-pointer ${
-                    deptoActivo?.nombre === d.nombre ? 'bg-blue-50 font-bold text-blue-900' : 'hover:bg-slate-50 text-slate-700'
-                  }`}
-                >
-                  <span className="truncate">{d.nombre}</span>
-                  <span className="font-mono tabular-nums font-semibold">{d.empresas.length} emp.</span>
-                </button>
-              ))}
-            </div>
+            )}
           </div>
         </div>
       </div>

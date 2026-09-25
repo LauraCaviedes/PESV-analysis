@@ -11,6 +11,7 @@ import {
   IndicadoresPESV,
   ResumenIncertidumbre,
 } from '../types/pesv';
+import { clasificarMetasTexto } from './textAnalytics';
 
 /**
  * Calcula el nivel PESV oficial según Misionalidad y Flota/Conductores
@@ -284,6 +285,52 @@ export function generarAlertasANSV(empresa: Partial<EmpresaPESV>): AlertaANSV[] 
         recomendacionANSV: 'Asistencia Técnica en Mejora Continua y Acciones Correctivas (Paso 23) y directrices de auditoría interna anual según ISO 19011 (Paso 22).',
         pasosPESVAfectados: [22, 23],
       });
+    }
+
+    // 9. Alerta: Clasificación Dinámica de Metas Declaradas (Text Analytics - Requerimiento 2)
+    if (empresa.descripcionMetas) {
+      const metasAnalizadas = clasificarMetasTexto(empresa.descripcionMetas);
+      const categoriasPresentes = metasAnalizadas.map(m => m.categoria);
+
+      // Desalineación A: Fatalidades viales sin meta declarada de reducción de siniestros
+      if (ind.tsvFatalidades > 0 && !categoriasPresentes.includes('REDUCCION_SINIESTROS')) {
+        alertas.push({
+          id: `ALT-META-SIN-${empresa.id || '0'}`,
+          tipo: 'METAS_DESALINEADAS',
+          titulo: 'Metas Desalineadas: Registra Fatalidades sin Meta Explícita de Reducción',
+          severidad: 'CRÍTICA',
+          descripcion: `La organización reportó ${ind.tsvFatalidades} fatalidad(es) vial(es), pero en la descripción de metas declarada no se identificaron compromisos de reducción de siniestralidad mortal o cero visión.`,
+          recomendacionANSV: 'Reformular la política y metas del PESV (Paso 7 de Res 40595) articulando metas cuantificadas de cero fatalidades y planes de acción específicos.',
+          pasosPESVAfectados: [7, 8, 12, 13],
+        });
+      }
+
+      // Desalineación B: Exceso de velocidad recurrente sin meta de control de velocidad
+      const tieneVelocidadCritica = (inf?.C29 || 0) > 3 || ind.elvl > 8;
+      if (tieneVelocidadCritica && !categoriasPresentes.includes('GESTION_VELOCIDAD')) {
+        alertas.push({
+          id: `ALT-META-VEL-${empresa.id || '0'}`,
+          tipo: 'METAS_DESALINEADAS',
+          titulo: 'Metas Desalineadas: Crítico en Velocidad sin Meta de Control Tecnológico',
+          severidad: 'ALTA',
+          descripcion: `Registra ${inf?.C29 || 0} comparendos C29 y tasa de exceso de velocidad de ${ind.elvl.toFixed(1)}%, pero no definió metas sobre control de velocidad o telemetría.`,
+          recomendacionANSV: 'Integrar meta específica de velocidad segura en el PESV (Paso 7 y Paso 8 num. 1) con umbrales máximos tolerados y control GPS.',
+          pasosPESVAfectados: [7, 8, 15],
+        });
+      }
+
+      // Desalineación C: Cumplimiento deficiente de metas (<75% CM PESV)
+      if (ind.cmPesv < 75) {
+        alertas.push({
+          id: `ALT-META-BAJA-${empresa.id || '0'}`,
+          tipo: 'METAS_DESALINEADAS',
+          titulo: 'Bajo Cumplimiento de Metas Declaradas (CM PESV)',
+          severidad: 'ALTA',
+          descripcion: `La empresa alcanzó únicamente el ${ind.cmPesv.toFixed(1)}% de las metas programadas para la vigencia. Categorías identificadas: ${metasAnalizadas.map(m => m.nombreCategoria).join(', ') || 'Sin metas reconocidas'}.`,
+          recomendacionANSV: 'Revisión y ajuste del cronograma de metas (Paso 7 y 20) y asignación presupuestal y de recursos (Paso 3 y 4).',
+          pasosPESVAfectados: [3, 4, 7, 20],
+        });
+      }
     }
   }
 

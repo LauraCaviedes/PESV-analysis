@@ -12,6 +12,8 @@ import { IndicatorsView } from './components/IndicatorsView';
 import { ClassificationAuditView } from './components/ClassificationAuditView';
 import { InfractionsAnalysisView } from './components/InfractionsAnalysisView';
 import { TechnicalAssistanceView } from './components/TechnicalAssistanceView';
+import { RiskHeatmapView } from './components/RiskHeatmapView';
+import { GoalsTextAnalyticsView } from './components/GoalsTextAnalyticsView';
 import { GeoDistributionView } from './components/GeoDistributionView';
 import { EtlConsolidatorView } from './components/EtlConsolidatorView';
 import { ReportsView } from './components/ReportsView';
@@ -191,6 +193,22 @@ export default function App() {
         {/* 2. Indicadores e Incertidumbre */}
         {activeTab === 'indicadores' && (
           <IndicatorsView
+            empresas={empresasFiltradas}
+            onSeleccionarEmpresa={handleSeleccionarEmpresa}
+          />
+        )}
+
+        {/* 2.1 Mapa de Calor de Riesgos Viales (Paso 6 - Res. 40595) */}
+        {activeTab === 'riesgo' && (
+          <RiskHeatmapView
+            empresas={empresasFiltradas}
+            onSeleccionarEmpresa={handleSeleccionarEmpresa}
+          />
+        )}
+
+        {/* 2.2 Clasificación Inteligente de Metas (Paso 7 - Text Analytics) */}
+        {activeTab === 'metas' && (
+          <GoalsTextAnalyticsView
             empresas={empresasFiltradas}
             onSeleccionarEmpresa={handleSeleccionarEmpresa}
           />

@@ -7,9 +7,14 @@ import {
   TrendingUp,
   AlertCircle,
   FileSpreadsheet,
+  BarChart2,
+  Calendar,
+  ListOrdered,
 } from 'lucide-react';
 import { EmpresaPESV } from '../types/pesv';
 import { calcularMetricaConIncertidumbre } from '../utils/pesvCalculations';
+import { IndicatorHistogram } from './IndicatorHistogram';
+import { IndicatorTemporalAnalysis } from './IndicatorTemporalAnalysis';
 
 interface IndicatorsViewProps {
   empresas: EmpresaPESV[];
@@ -37,6 +42,7 @@ export const IndicatorsView: React.FC<IndicatorsViewProps> = ({
 }) => {
   const [indicadorSeleccionadoId, setIndicadorSeleccionadoId] = useState<string>('ind1');
   const [orden, setOrden] = useState<'desc' | 'asc'>('desc');
+  const [subVista, setSubVista] = useState<'HISTOGRAMA' | 'TEMPORAL' | 'TABLA'>('HISTOGRAMA');
 
   const definiciones: DefinicionIndicador[] = [
     {
@@ -364,7 +370,78 @@ export const IndicatorsView: React.FC<IndicatorsViewProps> = ({
         </div>
       </div>
 
-      {/* Tabla de Desglose por Empresa para el Indicador Seleccionado */}
+      {/* Selector de Modo de Análisis del Indicador */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-slate-200 rounded-xl p-3 shadow-xs">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold text-slate-700">Modo de Análisis:</span>
+          <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+            <button
+              onClick={() => setSubVista('HISTOGRAMA')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer flex items-center gap-1.5 ${
+                subVista === 'HISTOGRAMA'
+                  ? 'bg-blue-600 text-white shadow-xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <BarChart2 className="w-3.5 h-3.5" />
+              <span>Histograma & Curva KDE</span>
+            </button>
+            <button
+              onClick={() => setSubVista('TEMPORAL')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer flex items-center gap-1.5 ${
+                subVista === 'TEMPORAL'
+                  ? 'bg-blue-600 text-white shadow-xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span>Análisis Temporal (Paso 20)</span>
+            </button>
+            <button
+              onClick={() => setSubVista('TABLA')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer flex items-center gap-1.5 ${
+                subVista === 'TABLA'
+                  ? 'bg-blue-600 text-white shadow-xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <ListOrdered className="w-3.5 h-3.5" />
+              <span>Ranking & Incertidumbre (± δx)</span>
+            </button>
+          </div>
+        </div>
+
+        <span className="text-xs text-slate-500 font-mono">
+          {empresas.length} organizaciones evaluadas
+        </span>
+      </div>
+
+      {/* 1. Subvista: Histograma con Curva KDE y Línea de Media */}
+      {subVista === 'HISTOGRAMA' && (
+        <IndicatorHistogram
+          empresas={empresas}
+          nombreIndicador={indActual.nombre}
+          codigoIndicador={indActual.codigo}
+          unidad={indActual.unidad}
+          extractorValor={indActual.extractorValor}
+        />
+      )}
+
+      {/* 2. Subvista: Análisis Temporal según Frecuencias Paso 20 Tabla 10 */}
+      {subVista === 'TEMPORAL' && (
+        <IndicatorTemporalAnalysis
+          empresas={empresas}
+          indicadorId={indActual.id}
+          nombreIndicador={indActual.nombre}
+          codigoIndicador={indActual.codigo}
+          unidad={indActual.unidad}
+          extractorValor={indActual.extractorValor}
+          onSeleccionarEmpresa={onSeleccionarEmpresa}
+        />
+      )}
+
+      {/* 3. Subvista: Tabla de Desglose por Empresa con Incertidumbre */}
+      {subVista === 'TABLA' && (
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <div>
@@ -466,6 +543,7 @@ export const IndicatorsView: React.FC<IndicatorsViewProps> = ({
           </table>
         </div>
       </div>
+      )}
     </div>
   );
 };

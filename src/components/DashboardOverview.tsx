@@ -9,6 +9,11 @@ import {
   Building2,
   ArrowRight,
   Calendar,
+  Flame,
+  Target,
+  BarChart2,
+  MapPin,
+  Layers,
 } from 'lucide-react';
 import { EmpresaPESV, NivelPESV } from '../types/pesv';
 import { calcularMetricaConIncertidumbre } from '../utils/pesvCalculations';
@@ -353,6 +358,117 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             >
               Ver Pipeline ETL →
             </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Módulos Analíticos de la Resolución 40595 de 2022 */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Módulo 1: Mapa de Calor (Paso 6) */}
+        <div
+          onClick={() => onIrATab('riesgo')}
+          className="bg-white border border-slate-200 hover:border-red-300 rounded-xl p-4.5 shadow-xs hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
+        >
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="p-2 rounded-lg bg-red-50 text-red-600 group-hover:bg-red-600 group-hover:text-white transition-colors">
+                <Flame className="w-5 h-5" />
+              </span>
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-red-100/80 text-red-800 border border-red-200">
+                Paso 6
+              </span>
+            </div>
+            <h3 className="text-sm font-bold text-slate-900 group-hover:text-red-700 transition-colors">
+              Mapa de Calor (Heatmap)
+            </h3>
+            <p className="text-xs text-slate-500 mt-1 line-clamp-2">
+              Cruce dinámico de Nivel de Exposición vs Nivel de Probabilidad con criticidad de riesgos evaluados.
+            </p>
+          </div>
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-red-600">
+            <span>Matriz 3x3 Interactiva</span>
+            <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+          </div>
+        </div>
+
+        {/* Módulo 2: Clasificación de Metas (Paso 7 - Text Analytics) */}
+        <div
+          onClick={() => onIrATab('metas')}
+          className="bg-white border border-slate-200 hover:border-indigo-300 rounded-xl p-4.5 shadow-xs hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
+        >
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="p-2 rounded-lg bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                <Target className="w-5 h-5" />
+              </span>
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-indigo-100/80 text-indigo-800 border border-indigo-200">
+                Paso 7 · NLP
+              </span>
+            </div>
+            <h3 className="text-sm font-bold text-slate-900 group-hover:text-indigo-700 transition-colors">
+              Analítica de Metas
+            </h3>
+            <p className="text-xs text-slate-500 mt-1 line-clamp-2">
+              Text Analytics sobre descripciones de metas. Detección por palabras clave normativas y desalineaciones.
+            </p>
+          </div>
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-indigo-600">
+            <span>Clasificación Dinámica</span>
+            <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+          </div>
+        </div>
+
+        {/* Módulo 3: Histogramas & Densidad KDE */}
+        <div
+          onClick={() => onIrATab('indicadores')}
+          className="bg-white border border-slate-200 hover:border-blue-300 rounded-xl p-4.5 shadow-xs hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
+        >
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="p-2 rounded-lg bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                <BarChart2 className="w-5 h-5" />
+              </span>
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-blue-100/80 text-blue-800 border border-blue-200">
+                KDE Gaussiano
+              </span>
+            </div>
+            <h3 className="text-sm font-bold text-slate-900 group-hover:text-blue-700 transition-colors">
+              Histogramas con Media & KDE
+            </h3>
+            <p className="text-xs text-slate-500 mt-1 line-clamp-2">
+              Distribución estadística de cada indicador con curva de densidad Kernel, media y cuartiles.
+            </p>
+          </div>
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-blue-600">
+            <span>Explorar Distribuciones</span>
+            <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+          </div>
+        </div>
+
+        {/* Módulo 4: Análisis Temporal Paso 20 */}
+        <div
+          onClick={() => onIrATab('indicadores')}
+          className="bg-white border border-slate-200 hover:border-emerald-300 rounded-xl p-4.5 shadow-xs hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
+        >
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="p-2 rounded-lg bg-emerald-50 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                <Calendar className="w-5 h-5" />
+              </span>
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-100/80 text-emerald-800 border border-emerald-200">
+                Paso 20 · Tabla 10
+              </span>
+            </div>
+            <h3 className="text-sm font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">
+              Series Temporales Normativas
+            </h3>
+            <p className="text-xs text-slate-500 mt-1 line-clamp-2">
+              Frecuencias mensuales, trimestrales y acumuladas anuales. Filtro consolidado nacional o por empresa/NIT.
+            </p>
+          </div>
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-emerald-600">
+            <span>Análisis Mensual/Trimestral</span>
+            <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
           </div>
         </div>
       </div>

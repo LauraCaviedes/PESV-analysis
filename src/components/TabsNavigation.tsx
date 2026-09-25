@@ -8,11 +8,15 @@ import {
   MapPin,
   RefreshCw,
   FileText,
+  Flame,
+  Target,
 } from 'lucide-react';
 
 export type TabId =
   | 'dashboard'
   | 'indicadores'
+  | 'riesgo'
+  | 'metas'
   | 'clasificacion'
   | 'infracciones'
   | 'asistencia'
@@ -43,6 +47,8 @@ export const TabsNavigation: React.FC<TabsNavigationProps> = ({
   const tabs: TabItem[] = [
     { id: 'dashboard', label: 'Dashboard General', icon: LayoutDashboard },
     { id: 'indicadores', label: 'Indicadores & Incertidumbre', icon: Calculator },
+    { id: 'riesgo', label: 'Mapa de Calor Riesgos (Paso 6)', icon: Flame },
+    { id: 'metas', label: 'Analítica de Metas (Paso 7)', icon: Target },
     {
       id: 'clasificacion',
       label: 'Verificación de Clasificación',

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   FileText,
   FileSpreadsheet,
@@ -9,15 +9,227 @@ import {
   AlertTriangle,
   Building2,
   Calendar,
+  PieChart,
+  BarChart3,
+  Clock,
 } from 'lucide-react';
-import { EmpresaPESV } from '../types/pesv';
+import { EmpresaPESV, InfraccionesTransito } from '../types/pesv';
 import { exportarLibroPESVExcel, exportarParticionFormularios } from '../utils/excelExporter';
 import { calcularMetricaConIncertidumbre } from '../utils/pesvCalculations';
+import {
+  obtenerFrecuenciaPaso20,
+  generarSerieTemporalEmpresa,
+  consolidarSerieTemporalPoblacional,
+} from '../utils/temporalSeriesGenerator';
 
 interface ReportsViewProps {
   empresas: EmpresaPESV[];
   empresaFoco?: EmpresaPESV | null;
 }
+
+interface InfraccionItemPie {
+  codigo: string;
+  nombre: string;
+  cantidad: number;
+  color: string;
+}
+
+const COLORES_INFRACCIONES: Record<string, string> = {
+  C29: '#ef4444',
+  C14: '#f97316',
+  C02: '#eab308',
+  C38: '#8b5cf6',
+  D01: '#ec4899',
+  D04: '#06b6d4',
+  E03: '#b91c1c',
+  H04: '#3b82f6',
+  otrasInf: '#64748b',
+};
+
+const INDICADORES_REPORTE_CONFIG = [
+  {
+    id: 'ind1',
+    codigo: 'TSV',
+    nombre: 'Tasa Siniestros Viales por Nivel de Pérdida',
+    paso: 'Paso 20 · Ind 1',
+    unidad: '/1M km',
+    extractor: (e: EmpresaPESV) => e.indicadores.tsvTotal,
+  },
+  {
+    id: 'ind4',
+    codigo: 'CM PESV',
+    nombre: 'Cumplimiento de Metas del PESV',
+    paso: 'Paso 20 · Ind 4',
+    unidad: '%',
+    extractor: (e: EmpresaPESV) => e.indicadores.cmPesv,
+  },
+  {
+    id: 'ind5',
+    codigo: 'CPlan PESV',
+    nombre: 'Cumplimiento Plan Anual de Trabajo',
+    paso: 'Paso 20 · Ind 5',
+    unidad: '%',
+    extractor: (e: EmpresaPESV) => e.indicadores.cPlanPesv,
+  },
+  {
+    id: 'ind10',
+    codigo: 'CPMVh',
+    nombre: 'Plan Mantenimiento Preventivo',
+    paso: 'Paso 20 · Ind 10',
+    unidad: '%',
+    extractor: (e: EmpresaPESV) => e.indicadores.cpmvh,
+  },
+  {
+    id: 'ind12',
+    codigo: 'CPFSV Cob.',
+    nombre: 'Cobertura Plan Formación Vial',
+    paso: 'Paso 20 · Ind 12',
+    unidad: '%',
+    extractor: (e: EmpresaPESV) => e.indicadores.cpfCobertura,
+  },
+  {
+    id: 'ind6',
+    codigo: '%EJLC',
+    nombre: 'Exceso Jornadas de Conducción',
+    paso: 'Paso 20 · Ind 6',
+    unidad: '%',
+    extractor: (e: EmpresaPESV) => e.indicadores.porcExcesoJornada,
+  },
+  {
+    id: 'ind8',
+    codigo: 'ELVL',
+    nombre: 'Excesos Límite Velocidad Laboral',
+    paso: 'Paso 20 · Ind 8',
+    unidad: '%',
+    extractor: (e: EmpresaPESV) => e.indicadores.elvl,
+  },
+  {
+    id: 'ind9',
+    codigo: 'IDP',
+    nombre: 'Inspecciones Diarias Preoperacionales',
+    paso: 'Paso 20 · Ind 9',
+    unidad: '%',
+    extractor: (e: EmpresaPESV) => e.indicadores.idp,
+  },
+  {
+    id: 'ind3',
+    codigo: 'RSVI',
+    nombre: 'Riesgos Viales Identificados y Medidas',
+    paso: 'Paso 20 · Ind 3',
+    unidad: 'riesgos',
+    extractor: (e: EmpresaPESV) => e.indicadores.rsvi,
+  },
+  {
+    id: 'ind13',
+    codigo: 'NCAC',
+    nombre: 'Cierre de No Conformidades Auditoría',
+    paso: 'Paso 20 · Ind 13',
+    unidad: '%',
+    extractor: (e: EmpresaPESV) => e.indicadores.ncac,
+  },
+];
+
+const PieChartInfracciones: React.FC<{ items: InfraccionItemPie[]; total: number; subtitulo?: string }> = ({
+  items,
+  total,
+  subtitulo,
+}) => {
+  if (total === 0) {
+    return (
+      <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-center text-slate-400 text-xs">
+        Sin infracciones ni comparendos viales registrados en la vigencia.
+      </div>
+    );
+  }
+
+  let acumulado = 0;
+  const slices = items
+    .filter(it => it.cantidad > 0)
+    .map(item => {
+      const porcentaje = item.cantidad / total;
+      const startAngle = (acumulado / total) * 360;
+      acumulado += item.cantidad;
+      const endAngle = (acumulado / total) * 360;
+
+      const r = 50;
+      const cx = 65;
+      const cy = 65;
+
+      const startRad = ((startAngle - 90) * Math.PI) / 180.0;
+      const endRad =
+        (((endAngle - startAngle >= 359.99 ? startAngle + 359.99 : endAngle) - 90) * Math.PI) /
+        180.0;
+
+      const x1 = cx + r * Math.cos(startRad);
+      const y1 = cy + r * Math.sin(startRad);
+      const x2 = cx + r * Math.cos(endRad);
+      const y2 = cy + r * Math.sin(endRad);
+
+      const largeArc = endAngle - startAngle > 180 ? 1 : 0;
+      const pathD = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`;
+
+      return {
+        ...item,
+        porcentaje: porcentaje * 100,
+        pathD,
+      };
+    });
+
+  return (
+    <div className="flex flex-col sm:flex-row items-center gap-6 p-4 bg-slate-50/70 border border-slate-200 rounded-xl">
+      <div className="relative w-36 h-36 shrink-0 flex items-center justify-center">
+        <svg viewBox="0 0 130 130" className="w-full h-full drop-shadow-xs">
+          {slices.map((s, idx) => (
+            <path key={idx} d={s.pathD} fill={s.color} stroke="#ffffff" strokeWidth="1.5" />
+          ))}
+          <circle cx="65" cy="65" r="24" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
+          <text
+            x="65"
+            y="62"
+            textAnchor="middle"
+            className="text-[11px] font-mono font-bold fill-slate-800"
+          >
+            {total}
+          </text>
+          <text
+            x="65"
+            y="73"
+            textAnchor="middle"
+            className="text-[8px] font-sans fill-slate-400"
+          >
+            casos
+          </text>
+        </svg>
+      </div>
+
+      <div className="flex-1 w-full space-y-1">
+        {subtitulo && (
+          <span className="text-[11px] font-semibold text-slate-500 block mb-1">
+            {subtitulo}
+          </span>
+        )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-[11px]">
+          {slices.map((s, idx) => (
+            <div key={idx} className="flex items-center justify-between gap-1.5">
+              <div className="flex items-center gap-1.5 truncate">
+                <span
+                  className="w-2.5 h-2.5 rounded-full shrink-0"
+                  style={{ backgroundColor: s.color }}
+                />
+                <span className="font-semibold text-slate-800 truncate" title={s.nombre}>
+                  {s.codigo}: {s.nombre}
+                </span>
+              </div>
+              <span className="font-mono text-slate-600 shrink-0 font-medium">
+                {s.cantidad} ({s.porcentaje.toFixed(1)}%)
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export const ReportsView: React.FC<ReportsViewProps> = ({
   empresas,
@@ -54,6 +266,92 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
   const discrepantes = empresas.filter(e => !e.esClasificacionCorrecta);
   const criticas = empresas.flatMap(e => e.alertas).filter(a => a.severidad === 'CRÍTICA');
+
+  // Infracciones Consolidadas a Nivel Nacional
+  const totalesInfraccionesNacional = useMemo(() => {
+    const counts: Record<string, number> = {
+      C29: 0,
+      C14: 0,
+      C02: 0,
+      C38: 0,
+      D01: 0,
+      D04: 0,
+      E03: 0,
+      H04: 0,
+      otrasInfracciones: 0,
+    };
+    for (const emp of empresas) {
+      counts.C29 += emp.infracciones.C29 || 0;
+      counts.C14 += emp.infracciones.C14 || 0;
+      counts.C02 += emp.infracciones.C02 || 0;
+      counts.C38 += emp.infracciones.C38 || 0;
+      counts.D01 += emp.infracciones.D01 || 0;
+      counts.D04 += emp.infracciones.D04 || 0;
+      counts.E03 += emp.infracciones.E03 || 0;
+      counts.H04 += emp.infracciones.H04 || 0;
+      counts.otrasInfracciones += emp.infracciones.otrasInfracciones || 0;
+    }
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    const items: InfraccionItemPie[] = [
+      { codigo: 'C29', nombre: 'Exceso Velocidad', cantidad: counts.C29, color: COLORES_INFRACCIONES.C29 },
+      { codigo: 'C14', nombre: 'Restricción / Pico y Placa', cantidad: counts.C14, color: COLORES_INFRACCIONES.C14 },
+      { codigo: 'C38', nombre: 'Revisión Técnico-Mecánica', cantidad: counts.C38, color: COLORES_INFRACCIONES.C38 },
+      { codigo: 'D04', nombre: 'SOAT Vencido', cantidad: counts.D04, color: COLORES_INFRACCIONES.D04 },
+      { codigo: 'H04', nombre: 'Exceso Jornada / Fatiga', cantidad: counts.H04, color: COLORES_INFRACCIONES.H04 },
+      { codigo: 'C02', nombre: 'Estacionamiento Indebido', cantidad: counts.C02, color: COLORES_INFRACCIONES.C02 },
+      { codigo: 'D01', nombre: 'Sin Licencia Conducción', cantidad: counts.D01, color: COLORES_INFRACCIONES.D01 },
+      { codigo: 'E03', nombre: 'Alcohol / Sustancias', cantidad: counts.E03, color: COLORES_INFRACCIONES.E03 },
+      { codigo: 'Otras', nombre: 'Otras Infracciones', cantidad: counts.otrasInfracciones, color: COLORES_INFRACCIONES.otrasInf },
+    ];
+    return { items, total };
+  }, [empresas]);
+
+  // Infracciones Específicas de la Empresa Seleccionada
+  const infraccionesEmpresaPie = useMemo(() => {
+    if (!empresaSeleccionada) return { items: [], total: 0 };
+    const inf = empresaSeleccionada.infracciones;
+    const total = inf.totalInfracciones || 0;
+    const items: InfraccionItemPie[] = [
+      { codigo: 'C29', nombre: 'Exceso Velocidad', cantidad: inf.C29 || 0, color: COLORES_INFRACCIONES.C29 },
+      { codigo: 'C14', nombre: 'Restricción / Pico y Placa', cantidad: inf.C14 || 0, color: COLORES_INFRACCIONES.C14 },
+      { codigo: 'C38', nombre: 'Revisión Técnico-Mecánica', cantidad: inf.C38 || 0, color: COLORES_INFRACCIONES.C38 },
+      { codigo: 'D04', nombre: 'SOAT Vencido', cantidad: inf.D04 || 0, color: COLORES_INFRACCIONES.D04 },
+      { codigo: 'H04', nombre: 'Exceso Jornada / Fatiga', cantidad: inf.H04 || 0, color: COLORES_INFRACCIONES.H04 },
+      { codigo: 'C02', nombre: 'Estacionamiento Indebido', cantidad: inf.C02 || 0, color: COLORES_INFRACCIONES.C02 },
+      { codigo: 'D01', nombre: 'Sin Licencia Conducción', cantidad: inf.D01 || 0, color: COLORES_INFRACCIONES.D01 },
+      { codigo: 'E03', nombre: 'Alcohol / Sustancias', cantidad: inf.E03 || 0, color: COLORES_INFRACCIONES.E03 },
+      { codigo: 'Otras', nombre: 'Otras Infracciones', cantidad: inf.otrasInfracciones || 0, color: COLORES_INFRACCIONES.otrasInf },
+    ];
+    return { items, total };
+  }, [empresaSeleccionada]);
+
+  // Series Temporales Consolidadas Nacionales
+  const seriesNacionales = useMemo(() => {
+    return INDICADORES_REPORTE_CONFIG.map(cfg => {
+      const serie = consolidarSerieTemporalPoblacional(empresas, cfg.id, cfg.extractor, cfg.unidad);
+      const freq = obtenerFrecuenciaPaso20(cfg.id);
+      return {
+        cfg,
+        serie,
+        freq,
+      };
+    });
+  }, [empresas]);
+
+  // Series Temporales de la Empresa Seleccionada
+  const seriesEmpresa = useMemo(() => {
+    if (!empresaSeleccionada) return [];
+    return INDICADORES_REPORTE_CONFIG.map(cfg => {
+      const val = cfg.extractor(empresaSeleccionada);
+      const serie = generarSerieTemporalEmpresa(empresaSeleccionada, cfg.id, val, cfg.unidad);
+      const freq = obtenerFrecuenciaPaso20(cfg.id);
+      return {
+        cfg,
+        serie,
+        freq,
+      };
+    });
+  }, [empresaSeleccionada]);
 
   const imprimirPDF = () => {
     window.print();
@@ -301,6 +599,88 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                   </tr>
                 </tbody>
               </table>
+
+              {/* 2.1 Desglose Temporal según Frecuencias Paso 20 (Tabla 10) */}
+              <div className="mt-4 pt-3 border-t border-slate-200">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                    2.1 Mediciones Temporales Consolidadas (Trimestral, Mensual y Acumulado Anual)
+                  </h4>
+                  <span className="text-[10px] font-mono text-slate-500">
+                    Paso 20 · Tabla 10 (Res. 40595 de 2022)
+                  </span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse border border-slate-300 text-[11px]">
+                    <thead>
+                      <tr className="bg-slate-50 text-slate-700 font-semibold">
+                        <th className="p-1.5 border border-slate-300">Indicador</th>
+                        <th className="p-1.5 border border-slate-300">Frecuencia Oficial</th>
+                        <th className="p-1.5 border border-slate-300">Valores por Periodo (T1-T4 o Meses)</th>
+                        <th className="p-1.5 border border-slate-300 text-right">Acumulado Anual</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 font-mono text-[11px]">
+                      {seriesNacionales.map(({ cfg, serie, freq }) => (
+                        <tr key={cfg.id} className="hover:bg-slate-50/50">
+                          <td className="p-1.5 border border-slate-300 font-sans">
+                            <span className="font-bold text-slate-900">{cfg.codigo}</span>
+                            <span className="text-slate-500 text-[10px] block font-sans truncate max-w-[200px]" title={cfg.nombre}>
+                              {cfg.nombre}
+                            </span>
+                          </td>
+                          <td className="p-1.5 border border-slate-300 font-sans text-[10px]">
+                            <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                              {freq.etiqueta}
+                            </span>
+                          </td>
+                          <td className="p-1.5 border border-slate-300 text-[10px]">
+                            {freq.tipoPeriodo === 'TRIMESTRAL' ? (
+                              <div className="flex items-center gap-2">
+                                {serie.puntos.map(p => (
+                                  <span key={p.periodo} className="px-1 py-0.2 rounded bg-blue-50/70 border border-blue-100 text-blue-900 font-semibold">
+                                    {p.periodo}: {p.valor}{cfg.unidad}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : freq.tipoPeriodo === 'MENSUAL' ? (
+                              <div className="text-slate-600 text-[10px]">
+                                <span className="font-semibold text-slate-800">
+                                  Prom. mensual: {(serie.puntos.reduce((acc, p) => acc + p.valor, 0) / (serie.puntos.length || 1)).toFixed(1)}{cfg.unidad}
+                                </span>
+                                <span className="text-slate-400 ml-1.5 font-sans">
+                                  (Min: {Math.min(...serie.puntos.map(p => p.valor))} / Max: {Math.max(...serie.puntos.map(p => p.valor))})
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 font-sans italic text-[10px]">
+                                Medición consolidada de cierre de vigencia
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-1.5 border border-slate-300 text-right font-bold text-blue-950 font-mono">
+                            {serie.acumuladoAnual} {cfg.unidad}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* 2.2 Gráfica de Torta de Infracciones a Nivel Nacional */}
+              <div className="mt-4 pt-3 border-t border-slate-200">
+                <h4 className="font-bold text-xs text-slate-800 flex items-center gap-1.5 mb-2">
+                  <PieChart className="w-3.5 h-3.5 text-blue-600" />
+                  2.2 Distribución de Infracciones de Tránsito Detectadas (Gráfica de Torta Nacional)
+                </h4>
+                <PieChartInfracciones
+                  items={totalesInfraccionesNacional.items}
+                  total={totalesInfraccionesNacional.total}
+                  subtitulo="Comparendos acumulados en el censo total de organizaciones evaluadas"
+                />
+              </div>
             </div>
 
             {/* 3. Conclusiones y Dictamen de Asistencia Técnica */}
@@ -414,6 +794,96 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                     {empresaSeleccionada.indicadores.cpmvh.toFixed(1)}%
                   </span>
                 </div>
+              </div>
+
+              {/* 3.1 Desglose Temporal según Frecuencias Paso 20 */}
+              <div className="mt-4 pt-3 border-t border-slate-200">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                    3.1 Mediciones Temporales por Periodo (Trimestral, Mensual y Acumulado Anual)
+                  </h4>
+                  <span className="text-[10px] font-mono text-slate-500">
+                    Paso 20 · Tabla 10 (Res. 40595 de 2022)
+                  </span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse border border-slate-300 text-[11px]">
+                    <thead>
+                      <tr className="bg-slate-50 text-slate-700 font-semibold">
+                        <th className="p-1.5 border border-slate-300">Indicador PESV</th>
+                        <th className="p-1.5 border border-slate-300">Frecuencia</th>
+                        <th className="p-1.5 border border-slate-300">Valores por Periodo (Trimestre o Mes)</th>
+                        <th className="p-1.5 border border-slate-300 text-right">Acumulado Anual</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 font-mono text-[11px]">
+                      {seriesEmpresa.map(({ cfg, serie, freq }) => (
+                        <tr key={cfg.id} className="hover:bg-slate-50/50">
+                          <td className="p-1.5 border border-slate-300 font-sans">
+                            <span className="font-bold text-slate-900">{cfg.codigo}</span>
+                            <span className="text-slate-500 text-[10px] block font-sans truncate max-w-[200px]" title={cfg.nombre}>
+                              {cfg.nombre}
+                            </span>
+                          </td>
+                          <td className="p-1.5 border border-slate-300 font-sans text-[10px]">
+                            <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                              {freq.etiqueta}
+                            </span>
+                          </td>
+                          <td className="p-1.5 border border-slate-300 text-[10px]">
+                            {freq.tipoPeriodo === 'TRIMESTRAL' ? (
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {serie.puntos.map(p => (
+                                  <span key={p.periodo} className="px-1.5 py-0.2 rounded bg-blue-50/70 border border-blue-100 text-blue-900 font-semibold">
+                                    {p.periodo}: {p.valor}{cfg.unidad}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : freq.tipoPeriodo === 'MENSUAL' ? (
+                              <div className="text-slate-600 text-[10px] space-y-0.5">
+                                <div className="flex flex-wrap gap-1 text-[9px]">
+                                  {serie.puntos.slice(0, 6).map(p => (
+                                    <span key={p.periodo} className="px-1 py-0.2 rounded bg-slate-100 border border-slate-200 text-slate-700">
+                                      {p.periodo}:{p.valor}
+                                    </span>
+                                  ))}
+                                </div>
+                                <div className="flex flex-wrap gap-1 text-[9px]">
+                                  {serie.puntos.slice(6, 12).map(p => (
+                                    <span key={p.periodo} className="px-1 py-0.2 rounded bg-slate-100 border border-slate-200 text-slate-700">
+                                      {p.periodo}:{p.valor}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 font-sans italic text-[10px]">
+                                Medición consolidada de cierre de vigencia anual
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-1.5 border border-slate-300 text-right font-bold text-blue-950 font-mono">
+                            {serie.acumuladoAnual} {cfg.unidad}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* 3.2 Gráfica de Torta de Infracciones de la Empresa */}
+              <div className="mt-4 pt-3 border-t border-slate-200">
+                <h4 className="font-bold text-xs text-slate-800 flex items-center gap-1.5 mb-2">
+                  <PieChart className="w-3.5 h-3.5 text-blue-600" />
+                  3.2 Infracciones de Tránsito de la Organización (Gráfica de Torta)
+                </h4>
+                <PieChartInfracciones
+                  items={infraccionesEmpresaPie.items}
+                  total={infraccionesEmpresaPie.total}
+                  subtitulo={`Comparendos reportados para ${empresaSeleccionada.razonSocial}`}
+                />
               </div>
             </div>
 
