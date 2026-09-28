@@ -8,7 +8,7 @@ export default defineConfig({
     react(),
     tailwindcss(), // <-- Faltaba incluir esto aquí
   ],
-  base: '/BibText2APA7/',
+  base: '/PESV-analysis/',
   resolve: {
     alias: {
       '@': path.resolve(import.meta.dirname, './src'),
