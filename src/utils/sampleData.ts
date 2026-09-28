@@ -4,11 +4,12 @@
  * Incluye cálculo de nivel normativo, cálculo de incertidumbre (Delta_X) e infracciones
  */
 
-import { EmpresaPESV, NivelPESV, Misionalidad, CategoriaFormulario, IndicadoresPESV } from '../types/pesv';
+import { EmpresaPESV, NivelPESV, Misionalidad, CategoriaFormulario, IndicadoresPESV, FlotaVehicular, CensoConductores } from '../types/pesv';
 import { calcularNivelPESV, verificarIndicadoresEntregados, generarAlertasANSV } from './pesvCalculations';
 import { MUNICIPIOS_CLAVE } from './colombiaGeo';
 import { clasificarMetasTexto } from './textAnalytics';
 import { generarRiesgosDinamicosEmpresa } from './riskHeatmapCalculations';
+import { recalcularIndicadoresEstandarizados, calcularDeltasMultiFormulario } from './pesvStandardDictionary';
 
 interface EmpresaBaseRaw {
   razonSocial: string;
@@ -1053,11 +1054,27 @@ export function hidratarEmpresa(raw: EmpresaBaseRaw, index: number): EmpresaPESV
 
   // Fórmulas exactas según Resolución
   const k = 1000000;
-  const tsvFatalidades = (raw.siniestrosFatales * k) / raw.kmRecorridos;
-  const tsvHeridosGraves = (raw.siniestrosGraves * k) / raw.kmRecorridos;
-  const tsvHeridosLeves = (raw.siniestrosLeves * k) / raw.kmRecorridos;
-  const tsvChoquesSimples = (raw.choquesSimples * k) / raw.kmRecorridos;
-  const tsvTotal = tsvFatalidades + tsvHeridosGraves + tsvHeridosLeves + tsvChoquesSimples;
+  const tsvNivel1 = (raw.siniestrosFatales * k) / raw.kmRecorridos;
+  const tsvNivel2 = (raw.siniestrosGraves * k) / raw.kmRecorridos;
+  const tsvNivel3 = (raw.siniestrosLeves * k) / raw.kmRecorridos;
+  const tsvNivel4 = (raw.choquesSimples * k) / raw.kmRecorridos;
+  const tsvTotal = tsvNivel1 + tsvNivel2 + tsvNivel3 + tsvNivel4;
+
+  const costosNivel1Directos = Math.round(raw.costoDirecto * 0.4 * 10) / 10;
+  const costosNivel1Indirectos = Math.round(raw.costoIndirecto * 0.4 * 10) / 10;
+  const costosNivel1Total = Math.round((costosNivel1Directos + costosNivel1Indirectos) * 10) / 10;
+
+  const costosNivel2Directos = Math.round(raw.costoDirecto * 0.3 * 10) / 10;
+  const costosNivel2Indirectos = Math.round(raw.costoIndirecto * 0.3 * 10) / 10;
+  const costosNivel2Total = Math.round((costosNivel2Directos + costosNivel2Indirectos) * 10) / 10;
+
+  const costosNivel3Directos = Math.round(raw.costoDirecto * 0.2 * 10) / 10;
+  const costosNivel3Indirectos = Math.round(raw.costoIndirecto * 0.2 * 10) / 10;
+  const costosNivel3Total = Math.round((costosNivel3Directos + costosNivel3Indirectos) * 10) / 10;
+
+  const costosNivel4Directos = Math.round(raw.costoDirecto * 0.1 * 10) / 10;
+  const costosNivel4Indirectos = Math.round(raw.costoIndirecto * 0.1 * 10) / 10;
+  const costosNivel4Total = Math.round((costosNivel4Directos + costosNivel4Indirectos) * 10) / 10;
 
   const costosTotales = raw.costoDirecto + raw.costoIndirecto;
   const rsvi = raw.riesgosFin - raw.riesgosIni;
@@ -1075,12 +1092,35 @@ export function hidratarEmpresa(raw: EmpresaBaseRaw, index: number): EmpresaPESV
   const ncac = raw.ncIdent > 0 ? (raw.ncCerr / raw.ncIdent) * 100 : 100;
 
   const indicadores: IndicadoresPESV = {
-    tsvFatalidades,
-    tsvHeridosGraves,
-    tsvHeridosLeves,
-    tsvChoquesSimples,
+    tsvNivel1,
+    nNivel1: raw.siniestrosFatales,
+    tsvNivel2,
+    nNivel2: raw.siniestrosGraves,
+    tsvNivel3,
+    nNivel3: raw.siniestrosLeves,
+    tsvNivel4,
+    nNivel4: raw.choquesSimples,
+
+    tsvFatalidades: tsvNivel1,
+    tsvHeridosGraves: tsvNivel2,
+    tsvHeridosLeves: tsvNivel3,
+    tsvChoquesSimples: tsvNivel4,
     tsvTotal,
     kmRecorridosTrimestre: raw.kmRecorridos,
+
+    costosNivel1Directos,
+    costosNivel1Indirectos,
+    costosNivel1Total,
+    costosNivel2Directos,
+    costosNivel2Indirectos,
+    costosNivel2Total,
+    costosNivel3Directos,
+    costosNivel3Indirectos,
+    costosNivel3Total,
+    costosNivel4Directos,
+    costosNivel4Indirectos,
+    costosNivel4Total,
+
     costosDirectos: raw.costoDirecto,
     costosIndirectos: raw.costoIndirecto,
     costosTotales,
@@ -1127,128 +1167,328 @@ export function hidratarEmpresa(raw: EmpresaBaseRaw, index: number): EmpresaPESV
 
   const { cumple, faltantes } = verificarIndicadoresEntregados(clasificacionCalculada, indicadores);
 
-  const empresaObj: Partial<EmpresaPESV> = {
-    id: `EMP-${(index + 1).toString().padStart(3, '0')}-${raw.anoReporte}`,
-    razonSocial: raw.razonSocial,
-    tipoDocumento: raw.nit.startsWith('9') || raw.nit.startsWith('8') ? 'NIT' : 'C.C.',
-    numeroDocumento: raw.nit,
-    correo: raw.correo,
-    anoReporte: raw.anoReporte,
-    departamento: raw.departamento,
-    municipio: raw.municipio,
-    lat: muni.lat,
-    lon: muni.lon,
-    sectorEconomico: raw.sectorEconomico,
-    codigoCIIU: raw.codigoCIIU,
-    tipoOrganizacion: raw.tipoOrganizacion,
-    claseOrganizacion: raw.claseOrganizacion,
-    misionalidad: raw.misionalidad,
-    clasificacionReportada: raw.clasificacionReportada,
-    clasificacionCalculada,
-    esClasificacionCorrecta,
-    discrepanciaClasificacion,
-    categoriaFormulario: raw.categoriaFormulario,
-    flagP1: raw.flagP1,
-    flagP2: raw.flagP2,
-    flagP3: raw.flagP3,
-    cantidadFormularios: raw.flagP1 + raw.flagP2 + raw.flagP3,
-    estadoParte1: raw.flagP1 === 1 ? raw.categoriaFormulario : '',
-    estadoParte2: raw.flagP2 === 1 ? raw.categoriaFormulario : '',
-    estadoParte3: raw.flagP3 === 1 ? raw.categoriaFormulario : '',
-    cumpleEntregaNivel: cumple,
-    indicadoresFaltantesPorNivel: faltantes,
-    flota: (() => {
-      const carrosCamionetasPropios = Math.round(raw.flotaPropia * 0.4);
-      const motosPropias = Math.round(raw.flotaPropia * 0.15);
-      const bicicletasMicromovilidadPropias = Math.round(raw.flotaPropia * 0.05);
-      const cargaPropios = Math.round(raw.flotaPropia * 0.25);
-      const pasajerosPropios = Math.round(raw.flotaPropia * 0.1);
-      const maquinariaAmarillaPropia = Math.max(
-        0,
-        raw.flotaPropia - (carrosCamionetasPropios + motosPropias + bicicletasMicromovilidadPropias + cargaPropios + pasajerosPropios)
-      );
+  const carrosCamionetasPropios = Math.round(raw.flotaPropia * 0.4);
+    const motosPropias = Math.round(raw.flotaPropia * 0.15);
+    const bicicletasMicromovilidadPropias = Math.round(raw.flotaPropia * 0.05);
+    const cargaPropios = Math.round(raw.flotaPropia * 0.25);
+    const pasajerosPropios = Math.round(raw.flotaPropia * 0.1);
+    const maquinariaAmarillaPropia = Math.max(
+      0,
+      raw.flotaPropia - (carrosCamionetasPropios + motosPropias + bicicletasMicromovilidadPropias + cargaPropios + pasajerosPropios)
+    );
 
-      const carrosTerceros = Math.round(raw.flotaTerceros * 0.4);
-      const motosTerceros = Math.round(raw.flotaTerceros * 0.3);
-      const bicicletasTerceros = Math.round(raw.flotaTerceros * 0.1);
-      const cargaTerceros = Math.round(raw.flotaTerceros * 0.15);
-      const pasajerosTerceros = Math.max(
-        0,
-        raw.flotaTerceros - (carrosTerceros + motosTerceros + bicicletasTerceros + cargaTerceros)
-      );
+    const carrosTerceros = Math.round(raw.flotaTerceros * 0.4);
+    const motosTerceros = Math.round(raw.flotaTerceros * 0.3);
+    const bicicletasTerceros = Math.round(raw.flotaTerceros * 0.1);
+    const cargaTerceros = Math.round(raw.flotaTerceros * 0.15);
+    const pasajerosTerceros = Math.max(
+      0,
+      raw.flotaTerceros - (carrosTerceros + motosTerceros + bicicletasTerceros + cargaTerceros)
+    );
 
-      return {
-        carrosCamionetasPropios,
-        motosPropias,
-        bicicletasMicromovilidadPropias,
-        cargaPropios,
-        pasajerosPropios,
-        maquinariaAmarillaPropia,
-        carrosTerceros,
-        motosTerceros,
-        bicicletasTerceros,
-        cargaTerceros,
-        pasajerosTerceros,
-        maquinariaAmarillaTerceros: 0,
-        totalVehiculos,
-      };
-    })(),
-    conductores: (() => {
-      const conductoresCarro = Math.round(raw.conductoresNorma * 0.4);
-      const conductoresCarga = Math.round(raw.conductoresNorma * 0.25);
-      const conductoresPasajeros = Math.round(raw.conductoresNorma * 0.15);
-      const conductoresMaquinaria = Math.round(raw.conductoresNorma * 0.05);
-      const conductoresBicicletas = Math.round(raw.conductoresNorma * 0.03);
-      const conductoresMotos = Math.max(
-        0,
-        raw.conductoresNorma - (conductoresCarro + conductoresCarga + conductoresPasajeros + conductoresMaquinaria + conductoresBicicletas)
-      );
+    const flotaObj: FlotaVehicular = {
+      carrosCamionetasPropios,
+      motosPropias,
+      bicicletasMicromovilidadPropias,
+      cargaPropios,
+      pasajerosPropios,
+      maquinariaAmarillaPropia,
+      carrosTerceros,
+      motosTerceros,
+      bicicletasTerceros,
+      cargaTerceros,
+      pasajerosTerceros,
+      maquinariaAmarillaTerceros: 0,
+      totalVehiculos,
+    };
 
-      return {
-        conductoresCarro,
-        conductoresCarga,
-        conductoresPasajeros,
-        conductoresMaquinaria,
-        conductoresMotos,
-        conductoresCiclomotores: 0,
-        conductoresBicicletas,
-        conductoresPatinetas: 0,
-        peatonesExclusivos: raw.peatones,
-        totalConductoresNorma,
-      };
-    })(),
-    indicadores,
-    deltasIncertidumbre: {
-      tsvTotal: raw.deltaTSV,
-      elvl: raw.deltaELVL,
-      idp: raw.deltaIDP,
-      cpmvh: raw.deltaCPMVh,
-      cmPesv: 1.5,
-      cPlanPesv: 1.2,
-      porcExcesoJornada: 0.3,
-      gveCobertura: 1.8,
-      cpfCumplimiento: 2.0,
-      cpfCobertura: 1.6,
-      ncac: 2.5,
-    },
-    infracciones: {
+    const conductoresCarro = Math.round(raw.conductoresNorma * 0.4);
+    const conductoresCarga = Math.round(raw.conductoresNorma * 0.25);
+    const conductoresPasajeros = Math.round(raw.conductoresNorma * 0.15);
+    const conductoresMaquinaria = Math.round(raw.conductoresNorma * 0.05);
+    const conductoresBicicletas = Math.round(raw.conductoresNorma * 0.03);
+    const conductoresMotos = Math.max(
+      0,
+      raw.conductoresNorma - (conductoresCarro + conductoresCarga + conductoresPasajeros + conductoresMaquinaria + conductoresBicicletas)
+    );
+
+    const conductoresObj: CensoConductores = {
+      conductoresCarro,
+      conductoresCarga,
+      conductoresPasajeros,
+      conductoresMaquinaria,
+      conductoresMotos,
+      conductoresCiclomotores: 0,
+      conductoresBicicletas,
+      conductoresPatinetas: 0,
+      peatonesExclusivos: raw.peatones,
+      totalConductoresNorma,
+    };
+
+    // Construir diccionario de variables canónicas estandarizadas
+    const kmTrim = Math.round(raw.kmRecorridos / 4);
+    const rawDict: Record<string, any> = {
+      // I1
+      I1_km_primer_trimestre: kmTrim,
+      I1_km_segundo_trimestre: kmTrim,
+      I1_km_tercer_trimestre: kmTrim,
+      I1_km_cuarto_trimestre: kmTrim,
+      I1_km_año: raw.kmRecorridos,
+
+      I1_Nivel1_n_primer_trimestre: Math.round(raw.siniestrosFatales * 0.25),
+      I1_Nivel1_n_segundo_trimestre: Math.round(raw.siniestrosFatales * 0.25),
+      I1_Nivel1_n_tercer_trimestre: Math.round(raw.siniestrosFatales * 0.25),
+      I1_Nivel1_n_cuarto_trimestre: raw.siniestrosFatales - Math.round(raw.siniestrosFatales * 0.25) * 3,
+      I1_Nivel1_n_año: raw.siniestrosFatales,
+
+      I1_Nivel2_n_primer_trimestre: Math.round(raw.siniestrosGraves * 0.25),
+      I1_Nivel2_n_segundo_trimestre: Math.round(raw.siniestrosGraves * 0.25),
+      I1_Nivel2_n_tercer_trimestre: Math.round(raw.siniestrosGraves * 0.25),
+      I1_Nivel2_n_cuarto_trimestre: raw.siniestrosGraves - Math.round(raw.siniestrosGraves * 0.25) * 3,
+      I1_Nivel2_n_año: raw.siniestrosGraves,
+
+      I1_Nivel3_n_primer_trimestre: Math.round(raw.siniestrosLeves * 0.25),
+      I1_Nivel3_n_segundo_trimestre: Math.round(raw.siniestrosLeves * 0.25),
+      I1_Nivel3_n_tercer_trimestre: Math.round(raw.siniestrosLeves * 0.25),
+      I1_Nivel3_n_cuarto_trimestre: raw.siniestrosLeves - Math.round(raw.siniestrosLeves * 0.25) * 3,
+      I1_Nivel3_n_año: raw.siniestrosLeves,
+
+      I1_Nivel4_n_primer_trimestre: Math.round(raw.choquesSimples * 0.25),
+      I1_Nivel4_n_segundo_trimestre: Math.round(raw.choquesSimples * 0.25),
+      I1_Nivel4_n_tercer_trimestre: Math.round(raw.choquesSimples * 0.25),
+      I1_Nivel4_n_cuarto_trimestre: raw.choquesSimples - Math.round(raw.choquesSimples * 0.25) * 3,
+      I1_Nivel4_n_año: raw.choquesSimples,
+
+      // I2
+      I2_Nivel1_directos_año: costosNivel1Directos,
+      I2_Nivel1_indirectos_año: costosNivel1Indirectos,
+      I2_Nivel1_directos_primer_trimestre: Math.round(costosNivel1Directos * 0.25 * 10) / 10,
+      I2_Nivel1_indirectos_primer_trimestre: Math.round(costosNivel1Indirectos * 0.25 * 10) / 10,
+      I2_Nivel1_directos_segundo_trimestre: Math.round(costosNivel1Directos * 0.25 * 10) / 10,
+      I2_Nivel1_indirectos_segundo_trimestre: Math.round(costosNivel1Indirectos * 0.25 * 10) / 10,
+      I2_Nivel1_directos_tercer_trimestre: Math.round(costosNivel1Directos * 0.25 * 10) / 10,
+      I2_Nivel1_indirectos_tercer_trimestre: Math.round(costosNivel1Indirectos * 0.25 * 10) / 10,
+      I2_Nivel1_directos_cuarto_trimestre: Math.round(costosNivel1Directos * 0.25 * 10) / 10,
+      I2_Nivel1_indirectos_cuarto_trimestre: Math.round(costosNivel1Indirectos * 0.25 * 10) / 10,
+
+      I2_Nivel2_directos_año: costosNivel2Directos,
+      I2_Nivel2_indirectos_año: costosNivel2Indirectos,
+      I2_Nivel2_directos_primer_trimestre: Math.round(costosNivel2Directos * 0.25 * 10) / 10,
+      I2_Nivel2_indirectos_primer_trimestre: Math.round(costosNivel2Indirectos * 0.25 * 10) / 10,
+      I2_Nivel2_directos_segundo_trimestre: Math.round(costosNivel2Directos * 0.25 * 10) / 10,
+      I2_Nivel2_indirectos_segundo_trimestre: Math.round(costosNivel2Indirectos * 0.25 * 10) / 10,
+      I2_Nivel2_directos_tercer_trimestre: Math.round(costosNivel2Directos * 0.25 * 10) / 10,
+      I2_Nivel2_indirectos_tercer_trimestre: Math.round(costosNivel2Indirectos * 0.25 * 10) / 10,
+      I2_Nivel2_directos_cuarto_trimestre: Math.round(costosNivel2Directos * 0.25 * 10) / 10,
+      I2_Nivel2_indirectos_cuarto_trimestre: Math.round(costosNivel2Indirectos * 0.25 * 10) / 10,
+
+      I2_Nivel3_directos_año: costosNivel3Directos,
+      I2_Nivel3_indirectos_año: costosNivel3Indirectos,
+      I2_Nivel3_directos_primer_trimestre: Math.round(costosNivel3Directos * 0.25 * 10) / 10,
+      I2_Nivel3_indirectos_primer_trimestre: Math.round(costosNivel3Indirectos * 0.25 * 10) / 10,
+      I2_Nivel3_directos_segundo_trimestre: Math.round(costosNivel3Directos * 0.25 * 10) / 10,
+      I2_Nivel3_indirectos_segundo_trimestre: Math.round(costosNivel3Indirectos * 0.25 * 10) / 10,
+      I2_Nivel3_directos_tercer_trimestre: Math.round(costosNivel3Directos * 0.25 * 10) / 10,
+      I2_Nivel3_indirectos_tercer_trimestre: Math.round(costosNivel3Indirectos * 0.25 * 10) / 10,
+      I2_Nivel3_directos_cuarto_trimestre: Math.round(costosNivel3Directos * 0.25 * 10) / 10,
+      I2_Nivel3_indirectos_cuarto_trimestre: Math.round(costosNivel3Indirectos * 0.25 * 10) / 10,
+
+      I2_Nivel4_directos_año: costosNivel4Directos,
+      I2_Nivel4_indirectos_año: costosNivel4Indirectos,
+      I2_Nivel4_directos_primer_trimestre: Math.round(costosNivel4Directos * 0.25 * 10) / 10,
+      I2_Nivel4_indirectos_primer_trimestre: Math.round(costosNivel4Indirectos * 0.25 * 10) / 10,
+      I2_Nivel4_directos_segundo_trimestre: Math.round(costosNivel4Directos * 0.25 * 10) / 10,
+      I2_Nivel4_indirectos_segundo_trimestre: Math.round(costosNivel4Indirectos * 0.25 * 10) / 10,
+      I2_Nivel4_directos_tercer_trimestre: Math.round(costosNivel4Directos * 0.25 * 10) / 10,
+      I2_Nivel4_indirectos_tercer_trimestre: Math.round(costosNivel4Indirectos * 0.25 * 10) / 10,
+      I2_Nivel4_directos_cuarto_trimestre: Math.round(costosNivel4Directos * 0.25 * 10) / 10,
+      I2_Nivel4_indirectos_cuarto_trimestre: Math.round(costosNivel4Indirectos * 0.25 * 10) / 10,
+
+      // I3
+      I3_RSVI_inicio_año: raw.riesgosIni,
+      I3_RSVI_fin_año: raw.riesgosFin,
+      I3_GRV_inicio_año: raw.riesgosAltosIni,
+      I3_GRV_fin_año: raw.riesgosAltosFin,
+
+      // I4
+      I4_nMetasAlcanzadas_año: raw.metasAlc,
+      I4_nMetasDefinidas_año: raw.metasTot,
+      I4_nMetasAlcanzadas_primer_trimestre: Math.round(raw.metasAlc * 0.25),
+      I4_nMetasDefinidas_primer_trimestre: Math.round(raw.metasTot * 0.25),
+      I4_nMetasAlcanzadas_segundo_trimestre: Math.round(raw.metasAlc * 0.25),
+      I4_nMetasDefinidas_segundo_trimestre: Math.round(raw.metasTot * 0.25),
+      I4_nMetasAlcanzadas_tercer_trimestre: Math.round(raw.metasAlc * 0.25),
+      I4_nMetasDefinidas_tercer_trimestre: Math.round(raw.metasTot * 0.25),
+      I4_nMetasAlcanzadas_cuarto_trimestre: Math.round(raw.metasAlc * 0.25),
+      I4_nMetasDefinidas_cuarto_trimestre: Math.round(raw.metasTot * 0.25),
+
+      // I5
+      I5_nActividadesEjecutadas_año: raw.actEjec,
+      I5_nActividadesProgramadas_año: raw.actProg,
+      I5_nActividadesEjecutadas_primer_trimestre: Math.round(raw.actEjec * 0.25),
+      I5_nActividadesProgramadas_primer_trimestre: Math.round(raw.actProg * 0.25),
+      I5_nActividadesEjecutadas_segundo_trimestre: Math.round(raw.actEjec * 0.25),
+      I5_nActividadesProgramadas_segundo_trimestre: Math.round(raw.actProg * 0.25),
+      I5_nActividadesEjecutadas_tercer_trimestre: Math.round(raw.actEjec * 0.25),
+      I5_nActividadesProgramadas_tercer_trimestre: Math.round(raw.actProg * 0.25),
+      I5_nActividadesEjecutadas_cuarto_trimestre: Math.round(raw.actEjec * 0.25),
+      I5_nActividadesProgramadas_cuarto_trimestre: Math.round(raw.actProg * 0.25),
+
+      // I10
+      I10_nActividades_año: raw.mantEjec,
+      I10_nProgramadas_año: raw.mantProg,
+      I10_nActividades_primer_trimestre: Math.round(raw.mantEjec * 0.25),
+      I10_nProgramadas_primer_trimestre: Math.round(raw.mantProg * 0.25),
+      I10_nActividades_segundo_trimestre: Math.round(raw.mantEjec * 0.25),
+      I10_nProgramadas_segundo_trimestre: Math.round(raw.mantProg * 0.25),
+      I10_nActividades_tercer_trimestre: Math.round(raw.mantEjec * 0.25),
+      I10_nProgramadas_tercer_trimestre: Math.round(raw.mantProg * 0.25),
+      I10_nActividades_cuarto_trimestre: Math.round(raw.mantEjec * 0.25),
+      I10_nProgramadas_cuarto_trimestre: Math.round(raw.mantProg * 0.25),
+
+      // I11
+      I11_nEjecutadas_año: raw.capEjec,
+      I11_nProgramadas_año: raw.capProg,
+      I11_nEjecutadas_primer_trimestre: Math.round(raw.capEjec * 0.25),
+      I11_nProgramadas_primer_trimestre: Math.round(raw.capProg * 0.25),
+      I11_nEjecutadas_segundo_trimestre: Math.round(raw.capEjec * 0.25),
+      I11_nProgramadas_segundo_trimestre: Math.round(raw.capProg * 0.25),
+      I11_nEjecutadas_tercer_trimestre: Math.round(raw.capEjec * 0.25),
+      I11_nProgramadas_tercer_trimestre: Math.round(raw.capProg * 0.25),
+      I11_nEjecutadas_cuarto_trimestre: Math.round(raw.capEjec * 0.25),
+      I11_nProgramadas_cuarto_trimestre: Math.round(raw.capProg * 0.25),
+
+      // I12
+      I12_nCapacitados_año: raw.colabCap,
+      I12_nTotal_año: raw.colabTot,
+      I12_nCapacitados_primer_trimestre: Math.round(raw.colabCap * 0.25),
+      I12_nTotal_primer_trimestre: raw.colabTot,
+      I12_nCapacitados_segundo_trimestre: Math.round(raw.colabCap * 0.25),
+      I12_nTotal_segundo_trimestre: raw.colabTot,
+      I12_nCapacitados_tercer_trimestre: Math.round(raw.colabCap * 0.25),
+      I12_nTotal_tercer_trimestre: raw.colabTot,
+      I12_nCapacitados_cuarto_trimestre: Math.round(raw.colabCap * 0.25),
+      I12_nTotal_cuarto_trimestre: raw.colabTot,
+
+      // I13
+      I13_NCidentificadas_año: raw.ncIdent,
+      I13_NCcerradas_año: raw.ncCerr,
+
+      // Infracciones
       C29: raw.c29,
       C14: raw.c14,
       C02: raw.c02,
       C38: raw.c38,
       D01: raw.d01,
-      D02: 0,
       D04: raw.d04,
-      D05: 0,
       E03: raw.e03,
       H04: raw.h04,
       B01: 1,
       B02: 0,
-      otrasInfracciones: raw.otrasInf,
-      totalInfracciones,
-    },
-    deltaInfracciones: Math.round(totalInfracciones * 0.08 * 10) / 10,
-  };
+    };
+
+    // Mensuales I6, I7, I8, I9
+    const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    meses.forEach(mes => {
+      rawDict[`I6_nEJLdiarias_${mes}`] = Math.round(raw.diasExcesoJornada / 12);
+      rawDict[`I6_sumaDiasTrabajados_${mes}`] = raw.diasTrabajadosMes;
+      rawDict[`I7_nIncluidos_${mes}`] = raw.vehicVelocidad;
+      rawDict[`I7_nUtilizados_${mes}`] = totalVehiculos;
+      rawDict[`I8_nExcesoVel_${mes}`] = Math.round(raw.desplazamientosExcesoVel / 12);
+      rawDict[`I8_nDesplazamientos_${mes}`] = Math.round(raw.totalDesplazamientos / 12);
+      rawDict[`I9_nInspeccionados_${mes}`] = raw.vehicInspeccionadosDia;
+      rawDict[`I9_nVehículos_${mes}`] = raw.vehicOperandoDia;
+    });
+    rawDict['I6_nEJLdiarias_año'] = raw.diasExcesoJornada;
+    rawDict['I6_sumaDiasTrabajados_año'] = raw.diasTrabajadosMes * 12;
+    rawDict['I7_nIncluidos_año'] = raw.vehicVelocidad;
+    rawDict['I7_nUtilizados_año'] = totalVehiculos;
+    rawDict['I8_nExcesoVel_año'] = raw.desplazamientosExcesoVel;
+    rawDict['I8_nDesplazamientos_año'] = raw.totalDesplazamientos;
+    rawDict['I9_nInspeccionados_año'] = raw.vehicInspeccionadosDia;
+    rawDict['I9_nVehículos_año'] = raw.vehicOperandoDia;
+
+    const calcs = recalcularIndicadoresEstandarizados(rawDict);
+    const cantFormularios = raw.flagP1 + raw.flagP2 + raw.flagP3;
+    const deltasMultiForm = calcularDeltasMultiFormulario(
+      {
+        cantidadFormularios: cantFormularios,
+        flagP1: raw.flagP1,
+        flagP2: raw.flagP2,
+        flagP3: raw.flagP3,
+        categoriaFormulario: raw.categoriaFormulario,
+        flota: flotaObj,
+        conductores: conductoresObj,
+      },
+      calcs
+    );
+
+    const empresaObj: Partial<EmpresaPESV> = {
+      id: `EMP-${(index + 1).toString().padStart(3, '0')}-${raw.anoReporte}`,
+      razonSocial: raw.razonSocial,
+      tipoDocumento: raw.nit.startsWith('9') || raw.nit.startsWith('8') ? 'NIT' : 'C.C.',
+      numeroDocumento: raw.nit,
+      correo: raw.correo,
+      anoReporte: raw.anoReporte,
+      departamento: raw.departamento,
+      municipio: raw.municipio,
+      lat: muni.lat,
+      lon: muni.lon,
+      sectorEconomico: raw.sectorEconomico,
+      codigoCIIU: raw.codigoCIIU,
+      tipoOrganizacion: raw.tipoOrganizacion,
+      claseOrganizacion: raw.claseOrganizacion,
+      misionalidad: raw.misionalidad,
+      clasificacionReportada: raw.clasificacionReportada,
+      clasificacionCalculada,
+      esClasificacionCorrecta,
+      discrepanciaClasificacion,
+      categoriaFormulario: raw.categoriaFormulario,
+      flagP1: raw.flagP1,
+      flagP2: raw.flagP2,
+      flagP3: raw.flagP3,
+      cantidadFormularios: cantFormularios,
+      estadoParte1: raw.flagP1 === 1 ? raw.categoriaFormulario : '',
+      estadoParte2: raw.flagP2 === 1 ? raw.categoriaFormulario : '',
+      estadoParte3: raw.flagP3 === 1 ? raw.categoriaFormulario : '',
+      cumpleEntregaNivel: cumple,
+      indicadoresFaltantesPorNivel: faltantes,
+      flota: flotaObj,
+      conductores: conductoresObj,
+      indicadores,
+      datosEstandarizados: calcs,
+      deltasMultiFormulario: deltasMultiForm,
+      deltasIncertidumbre: {
+        tsvTotal: deltasMultiForm['Delta_I1_TSV_Nivel1_año'] || raw.deltaTSV,
+        elvl: deltasMultiForm['Delta_I8_ELVL_año'] || raw.deltaELVL,
+        idp: deltasMultiForm['Delta_I9_IDP_año'] || raw.deltaIDP,
+        cpmvh: deltasMultiForm['Delta_I10_CPMV_año'] || raw.deltaCPMVh,
+        cmPesv: deltasMultiForm['Delta_I4_CM_año'] || 1.5,
+        cPlanPesv: deltasMultiForm['Delta_I5_CPlan_año'] || 1.2,
+        porcExcesoJornada: deltasMultiForm['Delta_I6_%EJLC_año'] || 0.3,
+        gveCobertura: deltasMultiForm['Delta_I7_nDe_año'] || 1.8,
+        cpfCumplimiento: deltasMultiForm['Delta_I11_CPFSV_año'] || 2.0,
+        cpfCobertura: deltasMultiForm['Delta_I12_CPF_año'] || 1.6,
+        ncac: deltasMultiForm['Delta_I13_NCAC_año'] || 2.5,
+      },
+      infracciones: {
+        C29: raw.c29,
+        C14: raw.c14,
+        C02: raw.c02,
+        C38: raw.c38,
+        D01: raw.d01,
+        D02: 0,
+        D04: raw.d04,
+        D05: 0,
+        E03: raw.e03,
+        H04: raw.h04,
+        B01: 1,
+        B02: 0,
+        otrasInfracciones: raw.otrasInf,
+        totalInfracciones,
+      },
+      deltaInfracciones: Math.round(totalInfracciones * 0.08 * 10) / 10,
+    };
 
   // Generar descripción representativa de metas según sector y perfil para Text Analytics (Paso 7)
   let textoMetas = 'Reducir la siniestralidad vial en 15% mediante capacitación al 95% de conductores en manejo preventivo y velocidad segura.';

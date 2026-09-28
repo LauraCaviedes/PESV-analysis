@@ -19,6 +19,12 @@ import { calcularNivelPESV, verificarIndicadoresEntregados, generarAlertasANSV }
 import { MUNICIPIOS_CLAVE } from './colombiaGeo';
 import { clasificarMetasTexto } from './textAnalytics';
 import { generarRiesgosDinamicosEmpresa } from './riskHeatmapCalculations';
+import {
+  normalizarFilaConDiccionario,
+  recalcularIndicadoresEstandarizados,
+  calcularDeltasMultiFormulario,
+  CODIGOS_INFRACCIONES_CNT,
+} from './pesvStandardDictionary';
 
 /**
  * Lee cualquier archivo Excel o CSV y retorna array de objetos JS
@@ -428,7 +434,7 @@ export function convertirExcelConsolidadoAEmpresas(filas: Record<string, any>[])
       row,
       [
         'Cantidad de colaboradores que conducen vehículos de transporte de pasajeros propios o de terceros usados en desplazamientos laborales.',
-        'Cantidad de colaboradores que son conductores de vehículos de transporte de pasajeros (bus, microbus, bus articulado, etc.)',
+        'Cantidad de colaboradores que son conductores de vehículos de transporte de pasajeros (bus, microbus, bus articulado, etc.)',
         'Cantidad de colaboradores que conducen vehículos de transporte de pasajeros usados en desplazamientos laborales.',
         'Cantidad de colaboradores que conducen vehículos de transporte de pasajeros en desplazamientos laborales.',
         'Cantidad de colaboradores que conducen transporte de pasajeros',
@@ -614,93 +620,178 @@ export function convertirExcelConsolidadoAEmpresas(filas: Record<string, any>[])
     const flagP3 = num(row['Flag_P3'], categoriaFormulario === 'A' ? 1 : 0);
     const cantidadFormularios = flagP1 + flagP2 + flagP3;
 
-    // 6. Indicadores
-    const kmRecorridos = extraerValor(row, ['kmRecorridosTrimestre', 'Km Recorridos Trimestre', 'Km_Trimestre', 'Kilómetros recorridos por la flota en el trimestre'], [/km.*trimestre/i, /kil[oó]metros.*recorridos/i]) || 500000;
-    const tsvFatalidades = extraerValor(row, ['TSV Fatalidades', 'tsvFatalidades', 'Siniestros Fatales'], [/tsv.*fatalidades/i, /siniestros.*fatales/i]);
-    const tsvHeridosGraves = extraerValor(row, ['TSV Heridos Graves', 'tsvHeridosGraves', 'Siniestros Graves'], [/tsv.*graves/i, /heridos.*graves/i]);
-    const tsvHeridosLeves = extraerValor(row, ['TSV Heridos Leves', 'tsvHeridosLeves', 'Siniestros Leves'], [/tsv.*leves/i, /heridos.*leves/i]);
-    const tsvChoquesSimples = extraerValor(row, ['TSV Choques Simples', 'tsvChoquesSimples', 'Choques Simples'], [/tsv.*choques/i, /choques.*simples/i, /da[ñn]os.*materiales/i]);
-    const tsvTotal = extraerValor(row, ['TSV Total (por 1M km)', 'tsvTotal', 'TSV_Total', 'Tasa de Siniestros Viales Total'], [/tsv.*total/i, /tasa.*siniestros/i]) || (tsvFatalidades + tsvHeridosGraves + tsvHeridosLeves + tsvChoquesSimples) || 1.8;
+    // Normalizar fila con Diccionario Oficial de Variables PESV
+    const rowNorm = normalizarFilaConDiccionario(row);
+    const calcs = recalcularIndicadoresEstandarizados(rowNorm);
 
-    const cmPesv = extraerValor(row, ['Cumplimiento Metas (%)', 'cmPesv', 'CM_PESV', 'Porcentaje de cumplimiento de metas'], [/cumplimiento.*metas/i, /cm_pesv/i]) || 85;
-    const cPlanPesv = extraerValor(row, ['Cumplimiento Actividades (%)', 'cPlanPesv', 'CPlan_PESV', 'Porcentaje de cumplimiento plan de trabajo'], [/cumplimiento.*actividades/i, /cplan/i]) || 88;
-    const porcExcesoJornada = extraerValor(row, ['% Exceso Jornadas Conductores', 'porcExcesoJornada', '%EJL', 'Porcentaje de exceso de jornadas laborales'], [/exceso.*jornada/i, /%ejl/i]) || 1.5;
-    const gveCobertura = extraerValor(row, ['Cobertura Gestión Velocidad GVE (%)', 'gveCobertura', 'GVE', 'Porcentaje de cobertura de gestión de velocidad'], [/cobertura.*velocidad/i, /gve/i]) || 90;
-    const elvl = extraerValor(row, ['Excesos Límite Velocidad ELVL (%)', 'elvl', 'ELVL', 'Porcentaje de excesos al límite de velocidad'], [/excesos.*l[ií]mite.*velocidad/i, /elvl/i]) || 2.4;
-    const idp = extraerValor(row, ['Inspecciones Preoperacionales IDP (%)', 'idp', 'IDP', 'Porcentaje de inspecciones diarias preoperacionales'], [/inspecciones.*preoperacionales/i, /idp/i]) || 92;
-    const cpmvh = extraerValor(row, ['Mantenimiento Preventivo CPMVh (%)', 'cpmvh', 'CPMVh', 'Porcentaje de mantenimiento preventivo'], [/mantenimiento.*preventivo/i, /cpmvh/i]) || 91;
-    const cpfCumplimiento = extraerValor(row, ['Cumplimiento Formación CPFSV (%)', 'cpfCumplimiento', 'CPFSV', 'Porcentaje de cumplimiento del plan de formación'], [/cumplimiento.*formaci[oó]n/i, /cpfsv/i]) || 86;
-    const cpfCobertura = extraerValor(row, ['Cobertura Formación (%)', 'cpfCobertura', 'Porcentaje de cobertura del plan de formación'], [/cobertura.*formaci[oó]n/i]) || 84;
-    const ncac = extraerValor(row, ['No Conformidades Auditoría Cerradas (%)', 'ncac', 'NCAC', 'Porcentaje de cierre de no conformidades'], [/conformidades.*cerradas/i, /ncac/i]) || 80;
+    // 6. Indicadores con 4 Niveles de Pérdida (Refactorizado)
+    // 6. Indicadores con 4 Niveles de Pérdida (Limpiado de defaults y bugs de ceros)
+    const kmRecorridos =
+      calcs['I1_km_año'] ??
+      calcs['I1_km_primer_trimestre'] ??
+      extraerValor(row, ['kmRecorridosTrimestre', 'Km Recorridos Trimestre', 'Km_Trimestre', 'Kilómetros recorridos por la flota en el trimestre'], [/km.*trimestre/i, /kil[oó]metros.*recorridos/i]);
 
-    const costosDirectos = num(row['Costos Directos (M COP)']) || num(row['costosDirectos']) || 40;
-    const costosIndirectos = num(row['Costos Indirectos (M COP)']) || num(row['costosIndirectos']) || 15;
-    const costosTotales = costosDirectos + costosIndirectos;
+    // Matriz sin los defaults estáticos (defDir / defIndir) que sobreescribían los 0 reales
+    const configuracionNiveles = [
+      { nivel: 1, claves: ['TSV Fatalidades', 'Siniestros Fatales'], regex: [/tsv.*fatalidades/i, /siniestros.*fatales/i] },
+      { nivel: 2, claves: ['TSV Heridos Graves', 'Siniestros Graves'], regex: [/tsv.*graves/i, /heridos.*graves/i] },
+      { nivel: 3, claves: ['TSV Heridos Leves', 'Siniestros Leves'], regex: [/tsv.*leves/i, /heridos.*leves/i] },
+      { nivel: 4, claves: ['TSV Choques Simples', 'Choques Simples'], regex: [/tsv.*choques/i, /da[ñn]os.*materiales/i] }
+    ];
+
+    const metricasPorNivel: Record<string, number> = {};
+    let tsvSumaTotal = 0;
+    let sumaCostosDirectos = 0;
+    let sumaCostosIndirectos = 0;
+
+    configuracionNiveles.forEach(({ nivel, claves, regex }) => {
+      // Usar Nullish (??) respeta el 0 si el diccionario oficial lo calculó como 0
+      const nSiniestros = calcs[`I1_Nivel${nivel}_n_año`] ?? calcs[`I1_Nivel${nivel}_n_primer_trimestre`] ?? extraerValor(row, claves, regex);
+      const tsvCalculado = calcs[`I1_TSV_Nivel${nivel}_año`] ?? calcs[`I1_TSV_Nivel${nivel}_primer_trimestre`] ?? (kmRecorridos > 0 ? (nSiniestros * 1000000) / kmRecorridos : 0);
+
+      metricasPorNivel[`nNivel${nivel}`] = nSiniestros;
+      metricasPorNivel[`tsvNivel${nivel}`] = tsvCalculado;
+      tsvSumaTotal += tsvCalculado;
+
+      // Extraer costos respetando el 0 absoluto (eliminados defDir y defIndir)
+      const costoDir = calcs[`I2_Nivel${nivel}_directos_año`] ?? calcs[`I2_Nivel${nivel}_directos_primer_trimestre`] ?? 0;
+      const costoIndir = calcs[`I2_Nivel${nivel}_indirectos_año`] ?? calcs[`I2_Nivel${nivel}_indirectos_primer_trimestre`] ?? 0;
+      
+      metricasPorNivel[`costosNivel${nivel}Directos`] = costoDir;
+      metricasPorNivel[`costosNivel${nivel}Indirectos`] = costoIndir;
+      metricasPorNivel[`costosNivel${nivel}Total`] = calcs[`I2_SV_Nivel${nivel}_año`] ?? (costoDir + costoIndir);
+      
+      sumaCostosDirectos += costoDir;
+      sumaCostosIndirectos += costoIndir;
+    });
+
+    const tsvExtraido = extraerValor(row, ['TSV Total (por 1M km)', 'tsvTotal', 'Tasa de Siniestros Viales Total'], [/tsv.*total/i, /tasa.*siniestros/i]);
+    const tsvTotal = tsvExtraido > 0 ? tsvExtraido : tsvSumaTotal;
+    const costosTotales = sumaCostosDirectos + sumaCostosIndirectos;
+
+    // Eliminados TODOS los fallbacks quemados (|| 85, || 92). extraerValor retorna 0 por defecto.
+    const cmPesv = calcs['I4_CM_año'] ?? calcs['I4_CM_primer_trimestre'] ?? extraerValor(row, ['Cumplimiento Metas (%)', 'cmPesv', 'CM_PESV', 'Porcentaje de cumplimiento de metas'], [/cumplimiento.*metas/i, /cm_pesv/i]);
+    const cPlanPesv = calcs['I5_CPlan_año'] ?? calcs['I5_CPlan_primer_trimestre'] ?? extraerValor(row, ['Cumplimiento Actividades (%)', 'cPlanPesv', 'CPlan_PESV', 'Porcentaje de cumplimiento plan de trabajo'], [/cumplimiento.*actividades/i, /cplan/i]);
+    const porcExcesoJornada = calcs['I6_%EJLC_año'] ?? calcs['I6_%EJLC_enero'] ?? extraerValor(row, ['% Exceso Jornadas Conductores', 'porcExcesoJornada', '%EJL', 'Porcentaje de exceso de jornadas laborales'], [/exceso.*jornada/i, /%ejl/i]);
+    const gveCobertura = calcs['I7_nDe_año'] ?? calcs['I7_nDe_enero'] ?? extraerValor(row, ['Cobertura Gestión Velocidad GVE (%)', 'gveCobertura', 'GVE', 'Porcentaje de cobertura de gestión de velocidad'], [/cobertura.*velocidad/i, /gve/i]);
+    const elvl = calcs['I8_ELVL_año'] ?? calcs['I8_ELVL_enero'] ?? extraerValor(row, ['Excesos Límite Velocidad ELVL (%)', 'elvl', 'ELVL', 'Porcentaje de excesos al límite de velocidad'], [/excesos.*l[ií]mite.*velocidad/i, /elvl/i]);
+    const idp = calcs['I9_IDP_año'] ?? calcs['I9_IDP_enero'] ?? extraerValor(row, ['Inspecciones Preoperacionales IDP (%)', 'idp', 'IDP', 'Porcentaje de inspecciones diarias preoperacionales'], [/inspecciones.*preoperacionales/i, /idp/i]);
+    const cpmvh = calcs['I10_CPMV_año'] ?? calcs['I10_CPMV_primer_trimestre'] ?? extraerValor(row, ['Mantenimiento Preventivo CPMVh (%)', 'cpmvh', 'CPMVh', 'Porcentaje de mantenimiento preventivo'], [/mantenimiento.*preventivo/i, /cpmvh/i]);
+    const cpfCumplimiento = calcs['I11_CPFSV_año'] ?? calcs['I11_CPFSV_primer_trimestre'] ?? extraerValor(row, ['Cumplimiento Formación CPFSV (%)', 'cpfCumplimiento', 'CPFSV', 'Porcentaje de cumplimiento del plan de formación'], [/cumplimiento.*formaci[oó]n/i, /cpfsv/i]);
+    const cpfCobertura = calcs['I12_CPF_año'] ?? calcs['I12_CPF_primer_trimestre'] ?? extraerValor(row, ['Cobertura Formación (%)', 'cpfCobertura', 'Porcentaje de cobertura del plan de formación'], [/cobertura.*formaci[oó]n/i]);
+    const ncac = calcs['I13_NCAC_año'] ?? extraerValor(row, ['No Conformidades Auditoría Cerradas (%)', 'ncac', 'NCAC', 'Porcentaje de cierre de no conformidades'], [/conformidades.*cerradas/i, /ncac/i]);
 
     const indicadores = {
-      tsvFatalidades,
-      tsvHeridosGraves,
-      tsvHeridosLeves,
-      tsvChoquesSimples,
+      ...metricasPorNivel,
+
+      tsvFatalidades: metricasPorNivel['tsvNivel1'],
+      tsvHeridosGraves: metricasPorNivel['tsvNivel2'],
+      tsvHeridosLeves: metricasPorNivel['tsvNivel3'],
+      tsvChoquesSimples: metricasPorNivel['tsvNivel4'],
       tsvTotal,
       kmRecorridosTrimestre: kmRecorridos,
-      costosDirectos,
-      costosIndirectos,
+
+      costosDirectos: sumaCostosDirectos,
+      costosIndirectos: sumaCostosIndirectos,
       costosTotales,
-      riesgosIdentificadosInicio: 20,
-      riesgosIdentificadosFin: 24,
-      rsvi: 4,
-      riesgosAltosInicio: 8,
-      riesgosAltosFin: 4,
-      grv: -4,
-      metasAlcanzadas: Math.round((cmPesv / 100) * 12),
-      metasTotales: 12,
+
+      riesgosIdentificadosInicio: calcs['I3_RSVI_inicio_año'] ?? 0,
+      riesgosIdentificadosFin: calcs['I3_RSVI_fin_año'] ?? 0,
+      rsvi: calcs['I3_RSVI'] ?? 0,
+      riesgosAltosInicio: calcs['I3_GRV_inicio_año'] ?? 0,
+      riesgosAltosFin: calcs['I3_GRV_fin_año'] ?? 0,
+      grv: calcs['I3_GRV'] ?? 0,
+
+      metasAlcanzadas: calcs['I4_nMetasAlcanzadas_año'] ?? 0,
+      metasTotales: calcs['I4_nMetasDefinidas_año'] ?? 0,
       cmPesv,
-      actividadesEjecutadas: Math.round((cPlanPesv / 100) * 30),
-      actividadesProgramadas: 30,
+
+      actividadesEjecutadas: calcs['I5_nActividadesEjecutadas_año'] ?? 0,
+      actividadesProgramadas: calcs['I5_nActividadesProgramadas_año'] ?? 0,
       cPlanPesv,
-      excesosJornadaDias: Math.round((porcExcesoJornada / 100) * (totalConductoresNorma * 30)),
-      sumatoriaDiasTrabajados: totalConductoresNorma * 30,
+
+      excesosJornadaDias: calcs['I6_nEJLdiarias_año'] ?? 0,
+      sumatoriaDiasTrabajados: calcs['I6_sumaDiasTrabajados_año'] ?? totalConductoresNorma * 30,
       porcExcesoJornada,
-      vehiculosGestionVelocidad: Math.round((gveCobertura / 100) * totalVehiculosNorma),
-      vehiculosDesplazamientosLaborales: totalVehiculosNorma,
+
+      vehiculosGestionVelocidad: calcs['I7_nIncluidos_año'] ?? 0,
+      vehiculosDesplazamientosLaborales: calcs['I7_nUtilizados_año'] ?? totalVehiculosNorma,
       gveCobertura,
-      desplazamientosExcesoVelocidad: Math.round((elvl / 100) * 500),
-      totalDesplazamientos: 500,
+
+      desplazamientosExcesoVelocidad: calcs['I8_nExcesoVel_año'] ?? 0,
+      totalDesplazamientos: calcs['I8_nDesplazamientos_año'] ?? 0,
       elvl,
-      vehiculosInspeccionadosDia: Math.round((idp / 100) * totalVehiculosNorma),
-      totalVehiculosOperando: totalVehiculosNorma,
+
+      vehiculosInspeccionadosDia: calcs['I9_nInspeccionados_año'] ?? 0,
+      totalVehiculosOperando: calcs['I9_nVehículos_año'] ?? totalVehiculosNorma,
       idp,
-      mantenimientosEjecutados: Math.round((cpmvh / 100) * 20),
-      mantenimientosProgramados: 20,
+
+      mantenimientosEjecutados: calcs['I10_nActividades_año'] ?? 0,
+      mantenimientosProgramados: calcs['I10_nProgramadas_año'] ?? 0,
       cpmvh,
-      capacitacionesEjecutadas: Math.round((cpfCumplimiento / 100) * 10),
-      capacitacionesProgramadas: 10,
+
+      capacitacionesEjecutadas: calcs['I11_nEjecutadas_año'] ?? 0,
+      capacitacionesProgramadas: calcs['I11_nProgramadas_año'] ?? 0,
       cpfCumplimiento,
-      colaboradoresCapacitados: Math.round((cpfCobertura / 100) * (totalConductoresNorma + peatonesExclusivos)),
-      totalColaboradores: totalConductoresNorma + peatonesExclusivos,
+
+      colaboradoresCapacitados: calcs['I12_nCapacitados_año'] ?? 0,
+      totalColaboradores: calcs['I12_nTotal_año'] ?? totalConductoresNorma + peatonesExclusivos,
       cpfCobertura,
-      ncIdentificadas: 4,
-      ncCerradas: Math.round((ncac / 100) * 4),
+
+      ncIdentificadas: calcs['I13_NCidentificadas_año'] ?? 0,
+      ncCerradas: calcs['I13_NCcerradas_año'] ?? 0,
       ncac,
+    } as any;
+
+    // 7. Infracciones según catálogo CNT estandarizado
+    const infraccionesObj: Record<string, any> = {
+      C29: num(rowNorm['C29']) || num(row['C29 (Exceso Velocidad)']) || 0,
+      C14: num(rowNorm['C14']) || num(row['C14 (Pico y Placa)']) || 0,
+      C02: num(rowNorm['C02']) || num(row['C02 (Mal Parqueo)']) || 0,
+      C38: num(rowNorm['C38']) || num(row['C38 (Técnico-Mecánica Vencida)']) || 0,
+      D01: num(rowNorm['D01']) || num(row['D01 (Sin Licencia)']) || 0,
+      D02: num(rowNorm['D02']) || 0,
+      D04: num(rowNorm['D04']) || num(row['D04 (Sin SOAT)']) || 0,
+      D05: num(rowNorm['D05']) || 0,
+      E03: num(rowNorm['E03']) || num(row['E03 (Alcoholimetría)']) || 0,
+      H04: num(rowNorm['H04']) || num(row['H04 (Exceso Horas Conducción)']) || 0,
+      B01: num(rowNorm['B01']) || 0,
+      B02: num(rowNorm['B02']) || 0,
+      otrasInfracciones: num(row['Otras Infracciones']) || 0,
+      totalInfracciones: 0,
     };
 
-    // 7. Infracciones
-    const c29 = num(row['C29']) || num(row['C29 (Exceso Velocidad)']) || 0;
-    const c14 = num(row['C14']) || num(row['C14 (Pico y Placa)']) || 0;
-    const c02 = num(row['C02']) || num(row['C02 (Mal Parqueo)']) || 0;
-    const c38 = num(row['C38']) || num(row['C38 (Técnico-Mecánica Vencida)']) || 0;
-    const d01 = num(row['D01']) || num(row['D01 (Sin Licencia)']) || 0;
-    const d04 = num(row['D04']) || num(row['D04 (Sin SOAT)']) || 0;
-    const e03 = num(row['E03']) || num(row['E03 (Alcoholimetría)']) || 0;
-    const h04 = num(row['H04']) || num(row['H04 (Exceso Horas Conducción)']) || 0;
-    const otras = num(row['Otras Infracciones']) || 0;
-    const totalInfracciones = num(row['Total Infracciones']) || (c29 + c14 + c02 + c38 + d01 + d04 + e03 + h04 + otras);
+    // Poblar todos los códigos CNT encontrados en la fila
+    CODIGOS_INFRACCIONES_CNT.forEach(({ codigo }) => {
+      if (rowNorm[codigo] !== undefined) {
+        infraccionesObj[codigo] = num(rowNorm[codigo]);
+      }
+    });
+
+    const sumTotalInfracciones = Object.entries(infraccionesObj)
+      .filter(([k]) => k !== 'totalInfracciones' && k !== 'otrasInfracciones')
+      .reduce((acc, [, v]) => acc + (typeof v === 'number' ? v : 0), 0);
+
+    infraccionesObj.totalInfracciones = num(row['Total Infracciones']) || sumTotalInfracciones;
 
     // 8. Coordenadas
     const muniMatch = MUNICIPIOS_CLAVE.find(m => m.nombre === municipio) || { lat: 4.6097, lon: -74.0817 };
 
     const { cumple, faltantes } = verificarIndicadoresEntregados(clasificacionCalculada, indicadores);
+
+    // 9. Cálculo de Deltas de Incertidumbre multiformulario (dependen de si envió varios formularios)
+    const deltasCalculados = calcularDeltasMultiFormulario(
+      { cantidadFormularios, flagP1, flagP2, flagP3, categoriaFormulario, flota: flotaObj, conductores: conductoresObj },
+      calcs
+    );
+
+    // Si el archivo ya traía columnas Delta_ explícitas, preservarlas
+    const deltasMultiForm: Record<string, number> = { ...deltasCalculados };
+    for (const [k, v] of Object.entries(row)) {
+      if (k.startsWith('Delta_') && typeof v !== 'undefined' && v !== null && v !== '') {
+        deltasMultiForm[k] = num(v);
+      }
+    }
 
     const empresaObj: Partial<EmpresaPESV> = {
       id: `EMP-${(idx + 1).toString().padStart(3, '0')}`,
@@ -735,36 +826,23 @@ export function convertirExcelConsolidadoAEmpresas(filas: Record<string, any>[])
       flota: flotaObj,
       conductores: conductoresObj,
       indicadores,
+      datosEstandarizados: calcs,
+      deltasMultiFormulario: deltasMultiForm,
       deltasIncertidumbre: {
-        tsvTotal: num(row['Delta_tsvTotal']) || num(row['Incertidumbre TSV (± delta)']) || 0.15,
-        elvl: num(row['Delta_elvl']) || 0.35,
-        idp: num(row['Delta_idp']) || 1.1,
-        cpmvh: num(row['Delta_cpmvh']) || 1.5,
-        cmPesv: 1.2,
-        cPlanPesv: 1.0,
-        porcExcesoJornada: 0.2,
-        gveCobertura: 1.5,
-        cpfCumplimiento: 1.8,
-        cpfCobertura: 1.4,
-        ncac: 2.0,
+        tsvTotal: deltasMultiForm['Delta_I1_TSV_Nivel1_año'] || num(row['Delta_tsvTotal']) || num(row['Incertidumbre TSV (± delta)']) || (cantidadFormularios > 1 ? 0.25 : 0),
+        elvl: deltasMultiForm['Delta_I8_ELVL_año'] || num(row['Delta_elvl']) || (cantidadFormularios > 1 ? 0.35 : 0),
+        idp: deltasMultiForm['Delta_I9_IDP_año'] || num(row['Delta_idp']) || (cantidadFormularios > 1 ? 1.1 : 0),
+        cpmvh: deltasMultiForm['Delta_I10_CPMV_año'] || num(row['Delta_cpmvh']) || (cantidadFormularios > 1 ? 1.5 : 0),
+        cmPesv: deltasMultiForm['Delta_I4_CM_año'] || (cantidadFormularios > 1 ? 1.2 : 0),
+        cPlanPesv: deltasMultiForm['Delta_I5_CPlan_año'] || (cantidadFormularios > 1 ? 1.0 : 0),
+        porcExcesoJornada: deltasMultiForm['Delta_I6_%EJLC_año'] || (cantidadFormularios > 1 ? 0.2 : 0),
+        gveCobertura: deltasMultiForm['Delta_I7_nDe_año'] || (cantidadFormularios > 1 ? 1.5 : 0),
+        cpfCumplimiento: deltasMultiForm['Delta_I11_CPFSV_año'] || (cantidadFormularios > 1 ? 1.8 : 0),
+        cpfCobertura: deltasMultiForm['Delta_I12_CPF_año'] || (cantidadFormularios > 1 ? 1.4 : 0),
+        ncac: deltasMultiForm['Delta_I13_NCAC_año'] || (cantidadFormularios > 1 ? 2.0 : 0),
       },
-      infracciones: {
-        C29: c29,
-        C14: c14,
-        C02: c02,
-        C38: c38,
-        D01: d01,
-        D02: 0,
-        D04: d04,
-        D05: 0,
-        E03: e03,
-        H04: h04,
-        B01: 0,
-        B02: 0,
-        otrasInfracciones: otras,
-        totalInfracciones,
-      },
-      deltaInfracciones: Math.round(totalInfracciones * 0.08 * 10) / 10,
+      infracciones: infraccionesObj as any,
+      deltaInfracciones: Math.round(infraccionesObj.totalInfracciones * (cantidadFormularios > 1 ? 0.08 : 0.02) * 10) / 10,
     };
 
     const descMetas = (

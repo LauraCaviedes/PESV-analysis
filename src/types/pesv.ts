@@ -46,7 +46,21 @@ export interface CensoConductores {
 }
 
 export interface IndicadoresPESV {
-  // 1. Tasa de Siniestros Viales por nivel de pérdida: TSV(n) = SV(tn) * 1,000,000 / km(t)
+  // 1. Tasa de Siniestros Viales por 4 niveles de pérdida: TSV(n) = SV(tn) * 1,000,000 / km(t)
+  // Nivel 1: Fatalidades
+  tsvNivel1: number;
+  nNivel1: number;
+  // Nivel 2: Heridos graves con más de 30 días de incapacidad
+  tsvNivel2: number;
+  nNivel2: number;
+  // Nivel 3: Heridos leves con hasta 30 días de incapacidad
+  tsvNivel3: number;
+  nNivel3: number;
+  // Nivel 4: Choques simples (solo daños materiales)
+  tsvNivel4: number;
+  nNivel4: number;
+  
+  // Compatibilidad con vistas previas
   tsvFatalidades: number;
   tsvHeridosGraves: number;
   tsvHeridosLeves: number;
@@ -54,7 +68,23 @@ export interface IndicadoresPESV {
   tsvTotal: number;
   kmRecorridosTrimestre: number;
   
-  // 2. Costos Siniestros Viales: $SV(n) = CDSV + CISV (en millones COP)
+  // 2. Costos Siniestros Viales por 4 niveles de pérdida: $SV(n) = CDSV + CISV (en millones COP)
+  costosNivel1Directos: number;
+  costosNivel1Indirectos: number;
+  costosNivel1Total: number;
+
+  costosNivel2Directos: number;
+  costosNivel2Indirectos: number;
+  costosNivel2Total: number;
+
+  costosNivel3Directos: number;
+  costosNivel3Indirectos: number;
+  costosNivel3Total: number;
+
+  costosNivel4Directos: number;
+  costosNivel4Indirectos: number;
+  costosNivel4Total: number;
+
   costosDirectos: number;
   costosIndirectos: number;
   costosTotales: number;
@@ -135,6 +165,8 @@ export interface InfraccionesTransito {
   B02: number; // Conducir sin placas o ilegibles
   otrasInfracciones: number;
   totalInfracciones: number;
+  // Soporte universal para cualquier código estandarizado (A1..A12, B1..B23, C1..C40, D1..D17, E1..E5, H1..H12)
+  [codigo: string]: number | undefined;
 }
 
 export type TipoAlertaANSV = 
@@ -276,6 +308,12 @@ export interface EmpresaPESV {
 
   // Paso 20: Series Temporales (Trimestral/Mensual/Anual según Tabla 10)
   seriesTemporales?: Record<string, SerieTemporalIndicador>;
+
+  // Variables estandarizadas oficiales (nombres canónicos del diccionario)
+  datosEstandarizados?: Record<string, any>;
+
+  // Deltas de incertidumbre por envíos multiformulario (cuando envió varios formularios)
+  deltasMultiFormulario?: Record<string, number>;
 }
 
 export interface ResumenIncertidumbre {
