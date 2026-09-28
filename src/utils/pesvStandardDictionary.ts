@@ -568,14 +568,14 @@ export function recalcularIndicadoresEstandarizados(data: Record<string, any>): 
   });
 
   // --- INDICADOR 3 (RSVI / GRV) ---
-  const rsviIni = getNum('I3_RSVI_inicio_año', 20);
-  const rsviFin = getNum('I3_RSVI_fin_año', 25);
+  const rsviIni = getNum('I3_RSVI_inicio_año', 0);
+  const rsviFin = getNum('I3_RSVI_fin_año', 0);
   res['I3_RSVI_inicio_año'] = rsviIni;
   res['I3_RSVI_fin_año'] = rsviFin;
   res['I3_RSVI'] = rsviFin - rsviIni;
 
-  const grvIni = getNum('I3_GRV_inicio_año', 10);
-  const grvFin = getNum('I3_GRV_fin_año', 5);
+  const grvIni = getNum('I3_GRV_inicio_año', 0);
+  const grvFin = getNum('I3_GRV_fin_año', 0);
   res['I3_GRV_inicio_año'] = grvIni;
   res['I3_GRV_fin_año'] = grvFin;
   res['I3_GRV'] = grvFin - grvIni;
@@ -583,8 +583,8 @@ export function recalcularIndicadoresEstandarizados(data: Record<string, any>): 
   // --- INDICADORES 4 A 13 ---
   // I4: CM
   periodosI1.forEach(periodo => {
-    const alc = getNum(`I4_nMetasAlcanzadas_${periodo}`, 10);
-    const def = getNum(`I4_nMetasDefinidas_${periodo}`, 12);
+    const alc = getNum(`I4_nMetasAlcanzadas_${periodo}`, 0);
+    const def = getNum(`I4_nMetasDefinidas_${periodo}`, 0);
     res[`I4_nMetasAlcanzadas_${periodo}`] = alc;
     res[`I4_nMetasDefinidas_${periodo}`] = def;
     res[`I4_CM_${periodo}`] = def > 0 ? Math.round((alc / def) * 1000) / 10 : 0;
@@ -592,8 +592,8 @@ export function recalcularIndicadoresEstandarizados(data: Record<string, any>): 
 
   // I5: CPlan
   periodosI1.forEach(periodo => {
-    const ejec = getNum(`I5_nActividadesEjecutadas_${periodo}`, 26);
-    const prog = getNum(`I5_nActividadesProgramadas_${periodo}`, 30);
+    const ejec = getNum(`I5_nActividadesEjecutadas_${periodo}`, 0);
+    const prog = getNum(`I5_nActividadesProgramadas_${periodo}`, 0);
     res[`I5_nActividadesEjecutadas_${periodo}`] = ejec;
     res[`I5_nActividadesProgramadas_${periodo}`] = prog;
     res[`I5_CPlan_${periodo}`] = prog > 0 ? Math.round((ejec / prog) * 1000) / 10 : 0;
@@ -602,8 +602,8 @@ export function recalcularIndicadoresEstandarizados(data: Record<string, any>): 
   // I6: %EJLC
   const mesesI6 = [...PERIODOS_MENSUALES, 'año'] as const;
   mesesI6.forEach(mes => {
-    const ejl = getNum(`I6_nEJLdiarias_${mes}`, 5);
-    const sdt = getNum(`I6_sumaDiasTrabajados_${mes}`, 300);
+    const ejl = getNum(`I6_nEJLdiarias_${mes}`, 0);
+    const sdt = getNum(`I6_sumaDiasTrabajados_${mes}`, 0);
     res[`I6_nEJLdiarias_${mes}`] = ejl;
     res[`I6_sumaDiasTrabajados_${mes}`] = sdt;
     res[`I6_%EJLC_${mes}`] = sdt > 0 ? Math.round((ejl / sdt) * 1000) / 10 : 0;
@@ -611,8 +611,8 @@ export function recalcularIndicadoresEstandarizados(data: Record<string, any>): 
 
   // I7: GVE
   mesesI6.forEach(mes => {
-    const inc = getNum(`I7_nIncluidos_${mes}`, 45);
-    const uti = getNum(`I7_nUtilizados_${mes}`, 50);
+    const inc = getNum(`I7_nIncluidos_${mes}`, 0);
+    const uti = getNum(`I7_nUtilizados_${mes}`, 0);
     res[`I7_nIncluidos_${mes}`] = inc;
     res[`I7_nUtilizados_${mes}`] = uti;
     res[`I7_nDe_${mes}`] = uti > 0 ? Math.round((inc / uti) * 1000) / 10 : 0;

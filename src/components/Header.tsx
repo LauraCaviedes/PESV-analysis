@@ -30,7 +30,7 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   return (
     <header className="w-full bg-slate-900 border-b border-slate-800 text-white sticky top-0 z-30">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-30 flex items-center justify-between">
         {/* Zone 1: Single text element wordmark */}
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-lg shadow-sm">
