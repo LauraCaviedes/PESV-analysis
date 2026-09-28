@@ -1042,10 +1042,14 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         <div className="pt-8 border-t border-slate-300 grid grid-cols-2 gap-8 text-xs text-center font-sans">
           <div>
             <div className="border-b border-slate-400 w-48 mx-auto mb-2"></div>
-            <div className="font-bold text-slate-900">Analista de Verificación</div>
+            <div className="font-bold text-slate-900">Auditor Líder de Verificación</div>
             <div className="text-slate-500 text-[11px]">Agencia Nacional de Seguridad Vial</div>
             <div className="text-slate-400 text-[10px] font-mono mt-0.5">Ley 2050 de 2020 · Verificación Oficial</div>
-          </div
+          </div>
+          <div>
+            <div className="border-b border-slate-400 w-48 mx-auto mb-2"></div>
+            
+          </div>
         </div>
       </div>
     </div>
