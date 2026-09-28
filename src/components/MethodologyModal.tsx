@@ -46,7 +46,8 @@ export const MethodologyModal: React.FC<MethodologyModalProps> = ({ isOpen, onCl
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
                 <span className="font-bold text-slate-900 block">Pestaña "Consolidador ETL Formularios"</span>
                 <p className="text-slate-600 text-[11px] mt-1">
-                  Aquí subes las Partes 1, 2 y 3 para limpiar duplicados, desempatar nombres por puntaje (+100 S.A.S.), calcular $Delta\_X$ y generar las bases completas e incompletas.
+                  Aquí subes las Partes 1, 2 y 3 para limpiar duplicados, desempatar nombres por puntaje (+100 S.A.S.), calcular $Delta\_X$ y generar las bases completas e incompletas y DESCARGUE EL DATASET GENERADO, el cual,
+                  deberá subir nuevamente a la plataforma para hacer el estudio en el botón de CARGAR DATOS EXCEL.
                 </p>
               </div>
 

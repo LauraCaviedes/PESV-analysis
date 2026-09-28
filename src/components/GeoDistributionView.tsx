@@ -37,7 +37,7 @@ const POSICIONES_ETIQUETAS: Record<string, { x: number; y: number }> = {
   'GUAINÍA': { x: 500, y: 450 }, //
   'GUAVIARE': { x: 390, y: 480 }, //
   'HUILA': { x: 250, y: 440 }, //
-  'LA GUAJIRA': { x: 380, y: 120 },
+  'LA GUAJIRA': { x: 360, y: 90 },
   'MAGDALENA': { x: 300, y: 120 },
   'META': { x: 360, y: 400 }, //
   'NARIÑO': { x: 150, y: 490 }, //

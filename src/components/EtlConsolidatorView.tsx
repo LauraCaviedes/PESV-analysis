@@ -227,7 +227,7 @@ export const EtlConsolidatorView: React.FC<EtlConsolidatorViewProps> = ({
             <p className="text-xs text-amber-900 leading-relaxed">
               Puedes cargar tus datos de dos formas según lo que tengas disponible:
               <br />
-              <strong>Opción 1:</strong> Si tienes los <strong>3 archivos resultantes del formulario</strong> (Parte 1, Parte 2 y Parte 3), súbelos en la pestaña <em>"Limpieza y Cruce de 3 Partes (ETL)"</em> para estabilizar el año, limpiar duplicados con la función de puntaje formal (<span className="font-mono font-bold">evaluar_nombre_puntaje</span>), calcular la incertidumbre fija y hacer el cruce outer merge.
+              <strong>Opción 1:</strong> Si tienes los <strong>3 archivos resultantes del formulario</strong> (Parte 1, Parte 2 y Parte 3), súbelos en la pestaña <em>"Limpieza y Cruce de 3 Partes (ETL)"</em> para estabilizar el año, limpiar duplicados con la función de puntaje formal (<span className="font-mono font-bold">evaluar_nombre_puntaje</span>), calcular la incertidumbre fija, hacer el cruce outer merge y generar el excel con los datos únicos a analizar. Se sugiere que estos datos pasaen por un proceso de limpiaza (de datos de prueba) previa individual por cada parte.
               <br />
               <strong>Opción 2:</strong> Si ya tienes el <strong>Excel Consolidado Completo</strong> (p. ej. <span className="font-mono">Base_Datos_PESV_Consolidada_Final.xlsx</span>), cárgalo en la pestaña <em>"Carga Directa de 1 Excel Consolidado"</em> para analizar de inmediato los indicadores, las infracciones y las alertas técnicas de la ANSV.
             </p>

@@ -283,6 +283,110 @@ const PieChartInfracciones: React.FC<{ items: InfraccionItemPie[]; total: number
   );
 };
 
+// ============================================================================
+// COMPONENTE NUEVO: Top 10 Alertas Críticas (Integrado en el Nacional)
+// ============================================================================
+const Top10AlertasTable: React.FC<{ empresas: EmpresaPESV[] }> = ({ empresas }) => {
+  // Extraer los años de la propiedad anoReporte de cada empresa
+  const aniosReporte = useMemo(() => {
+    if (!empresas || empresas.length === 0) return new Date().getFullYear().toString();
+    const years = new Set<number>();
+    empresas.forEach(emp => {
+      // Tomamos el anoReporte, y si no existe ponemos el año actual como fallback
+      const year = emp.anoReporte ? Number(emp.anoReporte) : new Date().getFullYear();
+      years.add(year);
+    });
+    
+    const yearsArray = Array.from(years).sort();
+    return yearsArray.length > 1 
+      ? `${yearsArray[0]} - ${yearsArray[yearsArray.length - 1]}` 
+      : yearsArray[0].toString();
+  }, [empresas]);
+
+  const top10Alertas = useMemo(() => {
+    const empresasConAlertas = [...empresas];
+    empresasConAlertas.sort((a, b) => {
+      const discrepanciaA = a.esClasificacionCorrecta ? 0 : 1;
+      const discrepanciaB = b.esClasificacionCorrecta ? 0 : 1;
+      if (discrepanciaA !== discrepanciaB) return discrepanciaB - discrepanciaA;
+      if (b.infracciones.totalInfracciones !== a.infracciones.totalInfracciones) {
+        return b.infracciones.totalInfracciones - a.infracciones.totalInfracciones;
+      }
+      return b.indicadores.tsvTotal - a.indicadores.tsvTotal;
+    });
+    return empresasConAlertas.slice(0, 10);
+  }, [empresas]);
+
+  if (empresas.length === 0) return null;
+
+  return (
+    <div className="mt-6 pt-4 border-t border-slate-200">
+      <div className="flex items-center justify-between border-b border-slate-200 pb-1 mb-3">
+        <h3 className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
+          <AlertOctagon className="w-4 h-4 text-red-600" />
+          3. Top 10 - Organizaciones con Alertas Críticas (ANSV)
+        </h3>
+        <span className="text-[10px] font-mono font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+          Vigencia(s): {aniosReporte}
+        </span>
+      </div>
+      
+      <div className="overflow-x-auto rounded-lg border border-slate-200">
+        <table className="w-full text-left text-[11px]">
+          <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
+            <tr>
+              <th className="py-2 px-3 font-semibold">Organización / NIT</th>
+              <th className="py-2 px-3 font-semibold text-center">Nivel Calculado</th>
+              <th className="py-2 px-3 font-semibold text-center">Discrepancia</th>
+              <th className="py-2 px-3 font-semibold text-center">Infracciones</th>
+              <th className="py-2 px-3 font-semibold text-center">TSV</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {top10Alertas.map((emp) => (
+              <tr key={emp.id} className="hover:bg-slate-50/50">
+                <td className="py-2 px-3">
+                  <div className="font-semibold text-slate-900 truncate max-w-[200px]">
+                    {emp.razonSocial}
+                  </div>
+                  <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                    NIT: {emp.numeroDocumento}
+                  </div>
+                </td>
+                <td className="py-2 px-3 text-center">
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-medium ${
+                    emp.clasificacionCalculada === 'AVANZADO' ? 'bg-purple-100 text-purple-800' :
+                    emp.clasificacionCalculada === 'ESTÁNDAR' ? 'bg-blue-100 text-blue-800' :
+                    'bg-slate-100 text-slate-800'
+                  }`}>
+                    {emp.clasificacionCalculada}
+                  </span>
+                </td>
+                <td className="py-2 px-3 text-center">
+                  {!emp.esClasificacionCorrecta ? (
+                    <span className="px-2 py-0.5 rounded bg-red-50 text-red-700 text-[10px] font-bold border border-red-200 inline-block">
+                      SÍ (Reportó: {emp.clasificacionReportada || emp.clasificacionReportada})
+                    </span>
+                  ) : (
+                    <span className="text-slate-400 font-mono">-</span>
+                  )}
+                </td>
+                <td className="py-2 px-3 text-center font-mono font-bold text-amber-700 bg-amber-50/30">
+                  {emp.infracciones.totalInfracciones}
+                </td>
+                <td className="py-2 px-3 text-center font-mono font-bold text-blue-700 bg-blue-50/30">
+                  {emp.indicadores.tsvTotal.toFixed(2)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+
 export const ReportsView: React.FC<ReportsViewProps> = ({
   empresas,
   empresaFoco,
@@ -692,6 +796,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 />
               </div>
             </div>
+
+            {/* SECCIÓN AÑADIDA: Top 10 Alertas */}
+            <Top10AlertasTable empresas={empresas} />
+
           </div>
         ) : (
           /* CONTENIDO 2: FICHA TÉCNICA INDIVIDUAL POR EMPRESA (SÁBANA DE AUDITORÍA 1 AL 13) */
