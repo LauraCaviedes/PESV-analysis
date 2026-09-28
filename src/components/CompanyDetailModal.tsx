@@ -26,14 +26,15 @@ interface CompanyDetailModalProps {
   onIrAReportes: (empresa: EmpresaPESV) => void;
 }
 
+// Configuración de los 13 indicadores con sus variables base
 const INDICADORES_MODAL = [
   { 
     id: '1', titulo: 'Indicador 1: Tasa de Siniestros Viales (TSV)', freq: 'TRIMESTRAL',
     sub: [
       { n: 'I1_Nivel1_n', d: 'I1_km', rep: 'I1_TSV_Nivel1', mult: 1000000, type: 'division', label: 'Nivel 1 (Fatalidades)' },
-      { n: 'I1_Nivel2_n', d: 'I1_km', rep: 'I1_TSV_Nivel2', mult: 1000000, type: 'division', label: 'Nivel 2 (Heridos Graves)' },
-      { n: 'I1_Nivel3_n', d: 'I1_km', rep: 'I1_TSV_Nivel3', mult: 1000000, type: 'division', label: 'Nivel 3 (Heridos Leves)' },
-      { n: 'I1_Nivel4_n', d: 'I1_km', rep: 'I1_TSV_Nivel4', mult: 1000000, type: 'division', label: 'Nivel 4 (Choques Simples)' }
+      { n: 'I1_Nivel2_n', d: 'I1_km', rep: 'I1_TSV_Nivel2', mult: 1000000, type: 'division', label: 'Nivel 2 (Graves)' },
+      { n: 'I1_Nivel3_n', d: 'I1_km', rep: 'I1_TSV_Nivel3', mult: 1000000, type: 'division', label: 'Nivel 3 (Leves)' },
+      { n: 'I1_Nivel4_n', d: 'I1_km', rep: 'I1_TSV_Nivel4', mult: 1000000, type: 'division', label: 'Nivel 4 (Daños)' }
     ]
   },
   { 
@@ -68,25 +69,31 @@ const OBTENER_PERIODOS_MODAL = (freq: string) => {
   if (freq === 'TRIMESTRAL') return [
     { label: 'T1', suf: 'primer_trimestre' }, { label: 'T2', suf: 'segundo_trimestre' },
     { label: 'T3', suf: 'tercer_trimestre' }, { label: 'T4', suf: 'cuarto_trimestre' },
-    { label: 'Año', suf: 'año' }
+    { label: 'Año (Acumulado Real)', suf: 'año', esAcumuladoReal: true }
   ];
   if (freq === 'MENSUAL') return [
     { label: 'Ene', suf: 'enero' }, { label: 'Feb', suf: 'febrero' }, { label: 'Mar', suf: 'marzo' },
     { label: 'Abr', suf: 'abril' }, { label: 'May', suf: 'mayo' }, { label: 'Jun', suf: 'junio' },
     { label: 'Jul', suf: 'julio' }, { label: 'Ago', suf: 'agosto' }, { label: 'Sep', suf: 'septiembre' },
     { label: 'Oct', suf: 'octubre' }, { label: 'Nov', suf: 'noviembre' }, { label: 'Dic', suf: 'diciembre' },
-    { label: 'Año', suf: 'año' }
+    { label: 'Año (Acumulado Real)', suf: 'año', esAcumuladoReal: true }
   ];
-  return [{ label: 'Acumulado Año', suf: 'año' }];
+  return [{ label: 'Acumulado Año', suf: 'año', esAcumuladoReal: false }];
 };
 
 export const CompanyDetailModal: React.FC<CompanyDetailModalProps> = ({
   empresa,
+  todasLasEmpresas = [],
+  onSeleccionarEmpresa,
   onClose,
   onIrAAsistencia,
   onIrAReportes,
 }) => {
   if (!empresa) return null;
+
+  const reportesHistoricos = todasLasEmpresas
+    .filter(e => e.numeroDocumento === empresa.numeroDocumento)
+    .sort((a, b) => b.anoReporte - a.anoReporte);
 
   const data = empresa.datosEstandarizados || {};
 
@@ -131,13 +138,35 @@ export const CompanyDetailModal: React.FC<CompanyDetailModalProps> = ({
         </div>
 
         <div className="p-6 space-y-6 text-xs text-slate-800">
-          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <History className="w-4 h-4 text-indigo-600" />
-              <span className="font-bold text-slate-900 text-xs">Año de Autogestión Seleccionado:</span>
-              <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 border border-indigo-200">
-                Año {empresa.anoReporte}
-              </span>
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <History className="w-4 h-4 text-indigo-600" />
+                <span className="font-bold text-slate-900 text-xs">Año de Autogestión Seleccionado:</span>
+                <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 border border-indigo-200">
+                  Año {empresa.anoReporte}
+                </span>
+              </div>
+
+              {reportesHistoricos.length > 1 && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] text-slate-500 font-medium mr-1">Cambiar a otro año:</span>
+                  {reportesHistoricos.map(rep => {
+                    const esActual = rep.anoReporte === empresa.anoReporte;
+                    return (
+                      <button
+                        key={rep.id}
+                        onClick={() => onSeleccionarEmpresa && onSeleccionarEmpresa(rep)}
+                        className={`px-2.5 py-1 text-xs font-mono font-bold rounded-lg transition-all cursor-pointer ${
+                          esActual ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white text-slate-700 hover:bg-indigo-50 border border-slate-200'
+                        }`}
+                      >
+                        {rep.anoReporte} {esActual ? '★' : ''}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
 
@@ -169,29 +198,7 @@ export const CompanyDetailModal: React.FC<CompanyDetailModalProps> = ({
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-200 mb-2.5">
-                <span className="font-bold text-slate-900 flex items-center gap-1.5">
-                  <Truck className="w-4 h-4 text-blue-600" />
-                  Censo de Flota Vehicular
-                </span>
-                <span className="text-[11px] font-mono text-slate-500 font-bold">{empresa.flota.totalVehiculos} total</span>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-200 mb-2.5">
-                <span className="font-bold text-slate-900 flex items-center gap-1.5">
-                  <Users className="w-4 h-4 text-emerald-600" />
-                  Censo de Conductores
-                </span>
-                <span className="text-[11px] font-mono text-slate-500 font-bold">{empresa.conductores.totalConductoresNorma} total</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Sábana Completa de Indicadores 1 al 13 con Auditoría Periódica */}
+          {/* Sábana Completa de Indicadores 1 al 13 con Acumulado Real Sumado */}
           <div className="space-y-4 pt-2">
             <div className="flex items-center gap-2 pb-2 border-b border-slate-200">
               <Calculator className="w-5 h-5 text-blue-600" />
@@ -206,8 +213,24 @@ export const CompanyDetailModal: React.FC<CompanyDetailModalProps> = ({
 
               const filasAuditoria = ind.sub.flatMap(cfg => {
                 return periodos.map(per => {
-                  const n = Number(data[`${cfg.n}_${per.suf}`]) || 0;
-                  const d = Number(data[`${cfg.d}_${per.suf}`]) || Number(data[`${(cfg as any).d2}_${per.suf}`]) || 0;
+                  let n = 0;
+                  let d = 0;
+
+                  // REGLA DE ACUMULADO ANUAL REAL (Suma de los periodos anteriores)
+                  if (per.esAcumuladoReal && ind.freq !== 'ANUAL') {
+                    const sufijosPeriodos = ind.freq === 'TRIMESTRAL' 
+                      ? ['primer_trimestre', 'segundo_trimestre', 'tercer_trimestre', 'cuarto_trimestre']
+                      : ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+                    sufijosPeriodos.forEach(suf => {
+                      n += Number(data[`${cfg.n}_${suf}`]) || 0;
+                      d += Number(data[`${cfg.d}_${suf}`]) || Number(data[`${(cfg as any).d2}_${suf}`]) || 0;
+                    });
+                  } else {
+                    n = Number(data[`${cfg.n}_${per.suf}`]) || 0;
+                    d = Number(data[`${cfg.d}_${per.suf}`]) || Number(data[`${(cfg as any).d2}_${per.suf}`]) || 0;
+                  }
+
                   const reportado = Number(data[`${cfg.rep}_${per.suf}`]);
 
                   if (!n && !d && isNaN(reportado)) return null;
@@ -304,6 +327,54 @@ export const CompanyDetailModal: React.FC<CompanyDetailModalProps> = ({
               );
             })}
           </div>
+
+          {/* Infracciones de Tránsito / Comparendos */}
+          <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50">
+            <span className="font-bold text-slate-900 block mb-2">
+              Comparendos de Tránsito Registrados ({empresa.infracciones.totalInfracciones} comparendos)
+            </span>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-[11px]">
+              <div className="p-2 rounded bg-white border border-slate-200">
+                <span className="text-slate-500 font-sans block text-[10px]">C29 (Velocidad):</span>
+                <span className="font-bold text-red-700">{empresa.infracciones.C29}</span>
+              </div>
+              <div className="p-2 rounded bg-white border border-slate-200">
+                <span className="text-slate-500 font-sans block text-[10px]">C14 (Pico y Placa):</span>
+                <span className="font-bold text-slate-800">{empresa.infracciones.C14}</span>
+              </div>
+              <div className="p-2 rounded bg-white border border-slate-200">
+                <span className="text-slate-500 font-sans block text-[10px]">C38 (Técnico-Mecánica):</span>
+                <span className="font-bold text-slate-800">{empresa.infracciones.C38}</span>
+              </div>
+              <div className="p-2 rounded bg-white border border-slate-200">
+                <span className="text-slate-500 font-sans block text-[10px]">H04 (Jornada Conducción):</span>
+                <span className="font-bold text-amber-700">{empresa.infracciones.H04}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Alertas Activas de Asistencia Técnica ANSV */}
+          {empresa.alertas && empresa.alertas.length > 0 && (
+            <div className="space-y-2">
+              <span className="font-bold text-slate-900 block">
+                Alertas Activas de Asistencia Técnica ANSV:
+              </span>
+              {empresa.alertas.map(a => (
+                <div key={a.id} className="p-3 rounded-lg border border-amber-200 bg-amber-50/60">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber-200 text-amber-900 font-bold">
+                      {a.severidad}
+                    </span>
+                    <span className="font-bold text-amber-950">{a.titulo}</span>
+                  </div>
+                  <p className="text-amber-900 text-[11px] mt-1">{a.descripcion}</p>
+                  <p className="text-blue-900 text-[11px] mt-1 font-medium">
+                    <strong>Orientación ANSV:</strong> {a.recomendacionANSV}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="pt-4 border-t border-slate-200 flex items-center justify-between">
             <button

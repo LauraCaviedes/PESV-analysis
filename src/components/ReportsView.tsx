@@ -2,18 +2,14 @@ import React, { useState, useRef, useMemo } from 'react';
 import {
   FileText,
   FileSpreadsheet,
-  Download,
   Printer,
-  ShieldCheck,
-  CheckCircle2,
-  AlertTriangle,
-  Building2,
   Calendar,
   PieChart,
-  BarChart3,
-  Clock,
+  Calculator,
+  CheckCircle2,
+  AlertOctagon,
 } from 'lucide-react';
-import { EmpresaPESV, InfraccionesTransito } from '../types/pesv';
+import { EmpresaPESV } from '../types/pesv';
 import { exportarLibroPESVExcel, exportarParticionFormularios } from '../utils/excelExporter';
 import { calcularMetricaConIncertidumbre } from '../utils/pesvCalculations';
 import {
@@ -46,6 +42,7 @@ const COLORES_INFRACCIONES: Record<string, string> = {
   otrasInf: '#64748b',
 };
 
+// Configuración completa de los 13 indicadores para el reporte PDF
 const INDICADORES_REPORTE_CONFIG = [
   {
     id: 'ind1',
@@ -128,6 +125,61 @@ const INDICADORES_REPORTE_CONFIG = [
     extractor: (e: EmpresaPESV) => e.indicadores.ncac,
   },
 ];
+
+// Configuración detallada de los 13 indicadores para la sábana de auditoría en la Ficha PDF
+const INDICADORES_AUDITORIA_PDF = [
+  { 
+    id: '1', titulo: 'Indicador 1: Tasa de Siniestros Viales (TSV)', freq: 'TRIMESTRAL',
+    sub: [
+      { n: 'I1_Nivel1_n', d: 'I1_km', rep: 'I1_TSV_Nivel1', mult: 1000000, type: 'division', label: 'Nivel 1 (Fatalidades)' },
+      { n: 'I1_Nivel2_n', d: 'I1_km', rep: 'I1_TSV_Nivel2', mult: 1000000, type: 'division', label: 'Nivel 2 (Graves)' },
+      { n: 'I1_Nivel3_n', d: 'I1_km', rep: 'I1_TSV_Nivel3', mult: 1000000, type: 'division', label: 'Nivel 3 (Leves)' },
+      { n: 'I1_Nivel4_n', d: 'I1_km', rep: 'I1_TSV_Nivel4', mult: 1000000, type: 'division', label: 'Nivel 4 (Daños)' }
+    ]
+  },
+  { 
+    id: '2', titulo: 'Indicador 2: Costos de Siniestros Viales ($SVT)', freq: 'TRIMESTRAL',
+    sub: [
+      { n: 'I2_Nivel1_directos', d: 'I2_Nivel1_indirectos', rep: 'I2_SV_Nivel1', type: 'suma', label: 'Costos Nivel 1' },
+      { n: 'I2_Nivel2_directos', d: 'I2_Nivel2_indirectos', rep: 'I2_SV_Nivel2', type: 'suma', label: 'Costos Nivel 2' },
+      { n: 'I2_Nivel3_directos', d: 'I2_Nivel3_indirectos', rep: 'I2_SV_Nivel3', type: 'suma', label: 'Costos Nivel 3' },
+      { n: 'I2_Nivel4_directos', d: 'I2_Nivel4_indirectos', rep: 'I2_SV_Nivel4', type: 'suma', label: 'Costos Nivel 4' }
+    ]
+  },
+  { 
+    id: '3', titulo: 'Indicador 3: Riesgos Viales Identificados', freq: 'ANUAL',
+    sub: [
+      { n: 'I3_RSVI_fin', d: 'I3_RSVI_inicio', rep: 'I3_RSVI', type: 'resta', label: 'RSVI (Todos los Riesgos)' },
+      { n: 'I3_GRV_fin', d: 'I3_GRV_inicio', rep: 'I3_GRV', type: 'resta', label: 'GRV (Riesgos Altos)' }
+    ]
+  },
+  { id: '4', titulo: 'Indicador 4: Cumplimiento de Metas del PESV', freq: 'TRIMESTRAL', sub: [{ n: 'I4_nMetasAlcanzadas', d: 'I4_nMetasDefinidas', rep: 'I4_CM', mult: 100, type: 'division', label: 'Cumplimiento de Metas (%)' }] },
+  { id: '5', titulo: 'Indicador 5: Cumplimiento Plan Anual de Trabajo', freq: 'TRIMESTRAL', sub: [{ n: 'I5_nActividadesEjecutadas', d: 'I5_nActividadesProgramadas', rep: 'I5_CPlan', mult: 100, type: 'division', label: 'Plan de Trabajo (%)' }] },
+  { id: '6', titulo: 'Indicador 6: % Exceso de Jornadas Laborales', freq: 'MENSUAL', sub: [{ n: 'I6_nEJLdiarias', d: 'I6_sumaDiasTrabajados', rep: 'I6_%EJLC', mult: 100, type: 'division', label: 'Exceso Jornadas (%)' }] },
+  { id: '7', titulo: 'Indicador 7: Cobertura Gestión de Velocidad', freq: 'MENSUAL', sub: [{ n: 'I7_nIncluidos', d: 'I7_nUtilizados', rep: 'I7_nDe', mult: 100, type: 'division', label: 'Cobertura GVE (%)' }] },
+  { id: '8', titulo: 'Indicador 8: Excesos Límite de Velocidad', freq: 'MENSUAL', sub: [{ n: 'I8_nExcesoVel', d: 'I8_nDesplazamientos', rep: 'I8_ELVL', mult: 100, type: 'division', label: 'Excesos Velocidad ELVL (%)' }] },
+  { id: '9', titulo: 'Indicador 9: Inspecciones Preoperacionales', freq: 'MENSUAL', sub: [{ n: 'I9_nInspeccionados', d: 'I9_nVehículos', d2: 'I9_nVehiculos', rep: 'I9_IDP', mult: 100, type: 'division', label: 'Inspecciones IDP (%)' }] },
+  { id: '10', titulo: 'Indicador 10: Mantenimiento Preventivo CPMVh', freq: 'TRIMESTRAL', sub: [{ n: 'I10_nActividades', d: 'I10_nProgramadas', rep: 'I10_CPMV', mult: 100, type: 'division', label: 'Mantenimiento CPMVh (%)' }] },
+  { id: '11', titulo: 'Indicador 11: Cumplimiento Formación CPFSV', freq: 'TRIMESTRAL', sub: [{ n: 'I11_nEjecutadas', d: 'I11_nProgramadas', rep: 'I11_CPFSV', mult: 100, type: 'division', label: 'Cumplimiento Formación (%)' }] },
+  { id: '12', titulo: 'Indicador 12: Cobertura Formación', freq: 'TRIMESTRAL', sub: [{ n: 'I12_nCapacitados', d: 'I12_nTotal', rep: 'I12_CPF', mult: 100, type: 'division', label: 'Cobertura Formación (%)' }] },
+  { id: '13', titulo: 'Indicador 13: Cierre de No Conformidades', freq: 'ANUAL', sub: [{ n: 'I13_NCcerradas', d: 'I13_NCidentificadas', rep: 'I13_NCAC', mult: 100, type: 'division', label: 'Cierre NCAC (%)' }] }
+];
+
+const OBTENER_PERIODOS_PDF = (freq: string) => {
+  if (freq === 'TRIMESTRAL') return [
+    { label: 'T1', suf: 'primer_trimestre' }, { label: 'T2', suf: 'segundo_trimestre' },
+    { label: 'T3', suf: 'tercer_trimestre' }, { label: 'T4', suf: 'cuarto_trimestre' },
+    { label: 'Año (Acumulado Real)', suf: 'año', esAcumuladoReal: true }
+  ];
+  if (freq === 'MENSUAL') return [
+    { label: 'Ene', suf: 'enero' }, { label: 'Feb', suf: 'febrero' }, { label: 'Mar', suf: 'marzo' },
+    { label: 'Abr', suf: 'abril' }, { label: 'May', suf: 'mayo' }, { label: 'Jun', suf: 'junio' },
+    { label: 'Jul', suf: 'julio' }, { label: 'Ago', suf: 'agosto' }, { label: 'Sep', suf: 'septiembre' },
+    { label: 'Oct', suf: 'octubre' }, { label: 'Nov', suf: 'noviembre' }, { label: 'Dic', suf: 'diciembre' },
+    { label: 'Año (Acumulado Real)', suf: 'año', esAcumuladoReal: true }
+  ];
+  return [{ label: 'Acumulado Año', suf: 'año', esAcumuladoReal: false }];
+};
 
 const PieChartInfracciones: React.FC<{ items: InfraccionItemPie[]; total: number; subtitulo?: string }> = ({
   items,
@@ -247,6 +299,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const empresaSeleccionada =
     empresas.find(e => e.id === empresaIdSeleccionada) || empresas[0];
 
+  const dataEmpresa = empresaSeleccionada?.datosEstandarizados || {};
+
   // Cálculos consolidados para el reporte nacional
   const tsvValores = empresas.map(e => e.indicadores.tsvTotal);
   const tsvDeltas = empresas.map(e => e.deltasIncertidumbre.tsvTotal || 0);
@@ -270,15 +324,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   // Infracciones Consolidadas a Nivel Nacional
   const totalesInfraccionesNacional = useMemo(() => {
     const counts: Record<string, number> = {
-      C29: 0,
-      C14: 0,
-      C02: 0,
-      C38: 0,
-      D01: 0,
-      D04: 0,
-      E03: 0,
-      H04: 0,
-      otrasInfracciones: 0,
+      C29: 0, C14: 0, C02: 0, C38: 0, D01: 0, D04: 0, E03: 0, H04: 0, otrasInfracciones: 0,
     };
     for (const emp of empresas) {
       counts.C29 += emp.infracciones.C29 || 0;
@@ -330,28 +376,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     return INDICADORES_REPORTE_CONFIG.map(cfg => {
       const serie = consolidarSerieTemporalPoblacional(empresas, cfg.id, cfg.extractor, cfg.unidad);
       const freq = obtenerFrecuenciaPaso20(cfg.id);
-      return {
-        cfg,
-        serie,
-        freq,
-      };
+      return { cfg, serie, freq };
     });
   }, [empresas]);
-
-  // Series Temporales de la Empresa Seleccionada
-  const seriesEmpresa = useMemo(() => {
-    if (!empresaSeleccionada) return [];
-    return INDICADORES_REPORTE_CONFIG.map(cfg => {
-      const val = cfg.extractor(empresaSeleccionada);
-      const serie = generarSerieTemporalEmpresa(empresaSeleccionada, cfg.id, val, cfg.unidad);
-      const freq = obtenerFrecuenciaPaso20(cfg.id);
-      return {
-        cfg,
-        serie,
-        freq,
-      };
-    });
-  }, [empresaSeleccionada]);
 
   const imprimirPDF = () => {
     window.print();
@@ -391,9 +418,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               <button
                 onClick={() => setTipoReporte('NACIONAL')}
                 className={`px-3 py-1.5 rounded-md font-semibold transition-colors cursor-pointer ${
-                  tipoReporte === 'NACIONAL'
-                    ? 'bg-white text-blue-700 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                  tipoReporte === 'NACIONAL' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 Informe Consolidado Nacional
@@ -401,9 +426,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               <button
                 onClick={() => setTipoReporte('EMPRESA')}
                 className={`px-3 py-1.5 rounded-md font-semibold transition-colors cursor-pointer ${
-                  tipoReporte === 'EMPRESA'
-                    ? 'bg-white text-blue-700 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                  tipoReporte === 'EMPRESA' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 Ficha Individual por Empresa
@@ -505,7 +528,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         {/* CONTENIDO 1: REPORTE NACIONAL */}
         {tipoReporte === 'NACIONAL' ? (
           <div className="space-y-6 text-xs text-slate-800">
-            {/* 1. Resumen Ejecutivo */}
             <div>
               <h3 className="font-bold text-sm text-slate-900 border-b border-slate-200 pb-1 mb-2">
                 1. Resumen Ejecutivo de Cumplimiento
@@ -542,7 +564,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               </div>
             </div>
 
-            {/* 2. Mediciones de Indicadores con Incertidumbre */}
             <div>
               <h3 className="font-bold text-sm text-slate-900 border-b border-slate-200 pb-1 mb-2">
                 2. Indicadores Oficiales con Incertidumbre Global Calculada
@@ -600,7 +621,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 </tbody>
               </table>
 
-              {/* 2.1 Desglose Temporal según Frecuencias Paso 20 (Tabla 10) */}
               <div className="mt-4 pt-3 border-t border-slate-200">
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
@@ -617,7 +637,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                       <tr className="bg-slate-50 text-slate-700 font-semibold">
                         <th className="p-1.5 border border-slate-300">Indicador</th>
                         <th className="p-1.5 border border-slate-300">Frecuencia Oficial</th>
-                        <th className="p-1.5 border border-slate-300">Valores por Periodo (T1-T4 o Meses)</th>
+                        <th className="p-1.5 border border-slate-300">Valores por Periodo</th>
                         <th className="p-1.5 border border-slate-300 text-right">Acumulado Anual</th>
                       </tr>
                     </thead>
@@ -644,18 +664,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                                   </span>
                                 ))}
                               </div>
-                            ) : freq.tipoPeriodo === 'MENSUAL' ? (
-                              <div className="text-slate-600 text-[10px]">
-                                <span className="font-semibold text-slate-800">
-                                  Prom. mensual: {(serie.puntos.reduce((acc, p) => acc + p.valor, 0) / (serie.puntos.length || 1)).toFixed(1)}{cfg.unidad}
-                                </span>
-                                <span className="text-slate-400 ml-1.5 font-sans">
-                                  (Min: {Math.min(...serie.puntos.map(p => p.valor))} / Max: {Math.max(...serie.puntos.map(p => p.valor))})
-                                </span>
-                              </div>
                             ) : (
-                              <span className="text-slate-400 font-sans italic text-[10px]">
-                                Medición consolidada de cierre de vigencia
+                              <span className="text-slate-600 text-[10px]">
+                                Prom. mensual: {(serie.puntos.reduce((acc, p) => acc + p.valor, 0) / (serie.puntos.length || 1)).toFixed(1)}{cfg.unidad}
                               </span>
                             )}
                           </td>
@@ -669,11 +680,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 </div>
               </div>
 
-              {/* 2.2 Gráfica de Torta de Infracciones a Nivel Nacional */}
               <div className="mt-4 pt-3 border-t border-slate-200">
                 <h4 className="font-bold text-xs text-slate-800 flex items-center gap-1.5 mb-2">
                   <PieChart className="w-3.5 h-3.5 text-blue-600" />
-                  2.2 Distribución de Infracciones de Tránsito Detectadas (Gráfica de Torta Nacional)
+                  2.2 Distribución de Infracciones de Tránsito Detectadas (Nacional)
                 </h4>
                 <PieChartInfracciones
                   items={totalesInfraccionesNacional.items}
@@ -682,26 +692,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 />
               </div>
             </div>
-
-            {/* 3. Conclusiones y Dictamen de Asistencia Técnica */}
-            <div>
-              <h3 className="font-bold text-sm text-slate-900 border-b border-slate-200 pb-1 mb-2">
-                3. Dictamen y Conclusiones Institucionales
-              </h3>
-              <ul className="list-disc pl-5 space-y-1.5 text-slate-700 text-xs">
-                <li>
-                  <strong>Capacitación en Clasificación:</strong> Se constató que el {((discrepantes.length / (empresas.length || 1)) * 100).toFixed(1)}% de las empresas analizadas declararon un nivel inferior (Básico o Estándar) al que les corresponde por tamaño de flota automotor y personal conductor. La ANSV emitirá circulares orientadoras para regularizar su encuadre.
-                </li>
-                <li>
-                  <strong>Foco en Velocidad y Fatiga:</strong> La infracción C29 (exceso de velocidad) representó la mayor recurrencia sancionatoria, correlacionándose directamente con eventos graves. Se requiere articular mesas técnicas con los sectores de Carga y Pasajeros en los corredores nacionales.
-                </li>
-              </ul>
-            </div>
           </div>
         ) : (
-          /* CONTENIDO 2: FICHA TÉCNICA INDIVIDUAL POR EMPRESA */
+          /* CONTENIDO 2: FICHA TÉCNICA INDIVIDUAL POR EMPRESA (SÁBANA DE AUDITORÍA 1 AL 13) */
           <div className="space-y-6 text-xs text-slate-800">
-            {/* Datos Generales de la Empresa */}
             <div>
               <h3 className="font-bold text-sm text-slate-900 border-b border-slate-200 pb-1 mb-3">
                 1. Datos de Identificación y Diagnóstico Operativo
@@ -734,7 +728,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               </div>
             </div>
 
-            {/* Clasificación y Discrepancias */}
             <div>
               <h3 className="font-bold text-sm text-slate-900 border-b border-slate-200 pb-1 mb-3">
                 2. Evaluación de Clasificación Normativa
@@ -759,138 +752,157 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               {!empresaSeleccionada.esClasificacionCorrecta && (
                 <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-red-900">
                   <span className="font-bold">Hallazgo de Discrepancia: </span>
-                  <span>{empresaSeleccionada.discrepanciaClasificacion}. La empresa debe adoptar de inmediato los requisitos y pasos adicionales del nivel {empresaSeleccionada.clasificacionCalculada}.</span>
+                  <span>{empresaSeleccionada.discrepanciaClasificacion}. La empresa debe adoptar de inmediato los requisitos del nivel {empresaSeleccionada.clasificacionCalculada}.</span>
                 </div>
               )}
             </div>
 
-            {/* Indicadores Clave de la Empresa */}
-            <div>
-              <h3 className="font-bold text-sm text-slate-900 border-b border-slate-200 pb-1 mb-3">
-                3. Mediciones de Desempeño y Siniestralidad Vial
-              </h3>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono">
-                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded">
-                  <span className="text-[10px] text-slate-500 block font-sans">TSV Total:</span>
-                  <span className="font-bold text-slate-900">
-                    {empresaSeleccionada.indicadores.tsvTotal.toFixed(2)} ± {empresaSeleccionada.deltasIncertidumbre.tsvTotal || 0}
-                  </span>
-                </div>
-                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded">
-                  <span className="text-[10px] text-slate-500 block font-sans">Cumplimiento Metas:</span>
-                  <span className="font-bold text-slate-900">
-                    {empresaSeleccionada.indicadores.cmPesv.toFixed(1)}%
-                  </span>
-                </div>
-                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded">
-                  <span className="text-[10px] text-slate-500 block font-sans">Inspección Diaria (IDP):</span>
-                  <span className="font-bold text-slate-900">
-                    {empresaSeleccionada.indicadores.idp.toFixed(1)}%
-                  </span>
-                </div>
-                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded">
-                  <span className="text-[10px] text-slate-500 block font-sans">Mantenimiento (CPMVh):</span>
-                  <span className="font-bold text-slate-900">
-                    {empresaSeleccionada.indicadores.cpmvh.toFixed(1)}%
-                  </span>
-                </div>
+            {/* AUDITORÍA INTEGRAL DE LOS 13 INDICADORES PESV */}
+            <div className="space-y-4 pt-2">
+              <div className="flex items-center gap-2 pb-2 border-b border-slate-200">
+                <Calculator className="w-5 h-5 text-blue-600" />
+                <h3 className="font-bold text-slate-900 text-sm">
+                  3. Auditoría Integral de Indicadores PESV (1 al 13): Valores Calculados vs. Reportados
+                </h3>
               </div>
 
-              {/* 3.1 Desglose Temporal según Frecuencias Paso 20 */}
-              <div className="mt-4 pt-3 border-t border-slate-200">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-blue-600" />
-                    3.1 Mediciones Temporales por Periodo (Trimestral, Mensual y Acumulado Anual)
-                  </h4>
-                  <span className="text-[10px] font-mono text-slate-500">
-                    Paso 20 · Tabla 10 (Res. 40595 de 2022)
-                  </span>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse border border-slate-300 text-[11px]">
-                    <thead>
-                      <tr className="bg-slate-50 text-slate-700 font-semibold">
-                        <th className="p-1.5 border border-slate-300">Indicador PESV</th>
-                        <th className="p-1.5 border border-slate-300">Frecuencia</th>
-                        <th className="p-1.5 border border-slate-300">Valores por Periodo (Trimestre o Mes)</th>
-                        <th className="p-1.5 border border-slate-300 text-right">Acumulado Anual</th>
+              {INDICADORES_AUDITORIA_PDF.map((ind) => {
+                let indicadorTieneError = false;
+                const periodos = OBTENER_PERIODOS_PDF(ind.freq);
+
+                const filasAuditoria = ind.sub.flatMap(cfg => {
+                  return periodos.map(per => {
+                    let n = 0;
+                    let d = 0;
+
+                    if (per.esAcumuladoReal && ind.freq !== 'ANUAL') {
+                      const sufijosPeriodos = ind.freq === 'TRIMESTRAL' 
+                        ? ['primer_trimestre', 'segundo_trimestre', 'tercer_trimestre', 'cuarto_trimestre']
+                        : ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+                      sufijosPeriodos.forEach(suf => {
+                        n += Number(dataEmpresa[`${cfg.n}_${suf}`]) || 0;
+                        d += Number(dataEmpresa[`${cfg.d}_${suf}`]) || Number(dataEmpresa[`${(cfg as any).d2}_${suf}`]) || 0;
+                      });
+                    } else {
+                      n = Number(dataEmpresa[`${cfg.n}_${per.suf}`]) || 0;
+                      d = Number(dataEmpresa[`${cfg.d}_${per.suf}`]) || Number(dataEmpresa[`${(cfg as any).d2}_${per.suf}`]) || 0;
+                    }
+
+                    const reportado = Number(dataEmpresa[`${cfg.rep}_${per.suf}`]);
+
+                    if (!n && !d && isNaN(reportado)) return null;
+
+                    const valReportado = isNaN(reportado) ? 0 : reportado;
+                    let valCalculado = 0;
+
+                    if (cfg.type === 'division') {
+                      const multVal = (cfg as any).mult || 1;
+                      valCalculado = d > 0 ? (n / d) * multVal : 0;
+                    } else if (cfg.type === 'suma') {
+                      valCalculado = n + d;
+                    } else if (cfg.type === 'resta') {
+                      valCalculado = n - d;
+                    }
+
+                    const diferencia = Math.abs(valCalculado - valReportado);
+                    const limiteError = cfg.type === 'division' ? 0.5 : 1;
+                    const hayError = (cfg.type === 'division' ? d > 0 : (n > 0 || d > 0)) && diferencia > limiteError;
+
+                    if (hayError) indicadorTieneError = true;
+
+                    return (
+                      <tr key={`${cfg.label}-${per.suf}`} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50">
+                        <td className="py-2 px-3 text-[11px] font-sans text-slate-700 font-medium">{cfg.label}</td>
+                        <td className="py-2 px-3 text-[11px] font-mono font-bold text-slate-500 bg-slate-50/50">{per.label}</td>
+                        <td className="py-2 px-3 text-right text-[11px] font-mono text-slate-600">
+                          {cfg.type !== 'resta' && cfg.type !== 'suma' ? `${n.toLocaleString()} / ${d.toLocaleString()}` : `${n.toLocaleString()} | ${d.toLocaleString()}`}
+                        </td>
+                        <td className="py-2 px-3 text-right text-[11px] font-mono font-bold text-blue-700 bg-blue-50/30">
+                          {valCalculado.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        </td>
+                        <td className={`py-2 px-3 text-right text-[11px] font-mono font-bold transition-colors ${
+                          hayError 
+                            ? 'text-red-700 bg-red-50 underline decoration-red-400 decoration-wavy underline-offset-2' 
+                            : 'text-emerald-700 bg-emerald-50/30'
+                        }`}>
+                          {valReportado.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200 font-mono text-[11px]">
-                      {seriesEmpresa.map(({ cfg, serie, freq }) => (
-                        <tr key={cfg.id} className="hover:bg-slate-50/50">
-                          <td className="p-1.5 border border-slate-300 font-sans">
-                            <span className="font-bold text-slate-900">{cfg.codigo}</span>
-                            <span className="text-slate-500 text-[10px] block font-sans truncate max-w-[200px]" title={cfg.nombre}>
-                              {cfg.nombre}
-                            </span>
-                          </td>
-                          <td className="p-1.5 border border-slate-300 font-sans text-[10px]">
-                            <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
-                              {freq.etiqueta}
-                            </span>
-                          </td>
-                          <td className="p-1.5 border border-slate-300 text-[10px]">
-                            {freq.tipoPeriodo === 'TRIMESTRAL' ? (
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                {serie.puntos.map(p => (
-                                  <span key={p.periodo} className="px-1.5 py-0.2 rounded bg-blue-50/70 border border-blue-100 text-blue-900 font-semibold">
-                                    {p.periodo}: {p.valor}{cfg.unidad}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : freq.tipoPeriodo === 'MENSUAL' ? (
-                              <div className="text-slate-600 text-[10px] space-y-0.5">
-                                <div className="flex flex-wrap gap-1 text-[9px]">
-                                  {serie.puntos.slice(0, 6).map(p => (
-                                    <span key={p.periodo} className="px-1 py-0.2 rounded bg-slate-100 border border-slate-200 text-slate-700">
-                                      {p.periodo}:{p.valor}
-                                    </span>
-                                  ))}
-                                </div>
-                                <div className="flex flex-wrap gap-1 text-[9px]">
-                                  {serie.puntos.slice(6, 12).map(p => (
-                                    <span key={p.periodo} className="px-1 py-0.2 rounded bg-slate-100 border border-slate-200 text-slate-700">
-                                      {p.periodo}:{p.valor}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                            ) : (
-                              <span className="text-slate-400 font-sans italic text-[10px]">
-                                Medición consolidada de cierre de vigencia anual
-                              </span>
-                            )}
-                          </td>
-                          <td className="p-1.5 border border-slate-300 text-right font-bold text-blue-950 font-mono">
-                            {serie.acumuladoAnual} {cfg.unidad}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+                    );
+                  }).filter(Boolean);
+                });
 
-              {/* 3.2 Gráfica de Torta de Infracciones de la Empresa */}
-              <div className="mt-4 pt-3 border-t border-slate-200">
-                <h4 className="font-bold text-xs text-slate-800 flex items-center gap-1.5 mb-2">
-                  <PieChart className="w-3.5 h-3.5 text-blue-600" />
-                  3.2 Infracciones de Tránsito de la Organización (Gráfica de Torta)
-                </h4>
-                <PieChartInfracciones
-                  items={infraccionesEmpresaPie.items}
-                  total={infraccionesEmpresaPie.total}
-                  subtitulo={`Comparendos reportados para ${empresaSeleccionada.razonSocial}`}
-                />
-              </div>
+                if (filasAuditoria.length === 0) return null;
+
+                return (
+                  <div key={ind.id} className={`bg-white border rounded-xl overflow-hidden shadow-xs transition-colors ${indicadorTieneError ? 'border-red-200' : 'border-slate-200'}`}>
+                    <div className={`px-4 py-2.5 border-b flex justify-between items-center ${indicadorTieneError ? 'bg-red-50/50 border-red-100' : 'bg-slate-50 border-slate-200'}`}>
+                      <h5 className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+                        <Calculator className="w-3.5 h-3.5 text-blue-600" />
+                        {ind.titulo}
+                      </h5>
+                      {indicadorTieneError ? (
+                        <span className="flex items-center gap-1 text-[10px] uppercase font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded">
+                          <AlertOctagon className="w-3 h-3" /> Incoherencia Detectada
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 text-[10px] uppercase font-bold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded">
+                          <CheckCircle2 className="w-3 h-3" /> Consistente
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                        <thead>
+                          <tr className="bg-slate-100 text-slate-500 text-[10px] uppercase tracking-wider">
+                            <th className="py-2 px-3 font-semibold">Sub-Nivel / Variable</th>
+                            <th className="py-2 px-3 font-semibold">Periodo</th>
+                            <th className="py-2 px-3 font-semibold text-right">Variables Base (N / D)</th>
+                            <th className="py-2 px-3 font-semibold text-right bg-blue-100/50">Valor Calculado</th>
+                            <th className="py-2 px-3 font-semibold text-right">Valor Reportado</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filasAuditoria}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {indicadorTieneError && (
+                      <div className="bg-red-50 p-3 border-t border-red-100 flex items-start gap-2.5">
+                        <AlertOctagon className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-bold text-red-900 text-[11px]">Alerta de Asistencia Técnica (Cálculo Incorrecto): </span>
+                          <span className="text-[11px] text-red-700">
+                            La organización reportó un valor final diferente al calculado mediante sus variables base. Los periodos con error se encuentran subrayados en rojo.
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Infracciones de Tránsito de la Empresa */}
+            <div className="mt-4 pt-3 border-t border-slate-200">
+              <h4 className="font-bold text-xs text-slate-800 flex items-center gap-1.5 mb-2">
+                <PieChart className="w-3.5 h-3.5 text-blue-600" />
+                4. Infracciones de Tránsito de la Organización (Gráfica de Torta)
+              </h4>
+              <PieChartInfracciones
+                items={infraccionesEmpresaPie.items}
+                total={infraccionesEmpresaPie.total}
+                subtitulo={`Comparendos reportados para ${empresaSeleccionada.razonSocial}`}
+              />
             </div>
 
             {/* Alertas y Plan de Asistencia Técnica ANSV */}
             <div>
               <h3 className="font-bold text-sm text-slate-900 border-b border-slate-200 pb-1 mb-3">
-                4. Plan de Asistencia Técnica Focalizada ANSV
+                5. Plan de Asistencia Técnica Focalizada ANSV
               </h3>
               {empresaSeleccionada.alertas.length === 0 ? (
                 <div className="p-3 bg-emerald-50 text-emerald-800 rounded-lg text-xs">
