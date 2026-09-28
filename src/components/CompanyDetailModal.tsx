@@ -10,12 +10,9 @@ import {
   LifeBuoy,
   FileSpreadsheet,
   FileText,
-  ShieldAlert,
   Calendar,
   History,
-  TrendingUp,
-  TrendingDown,
-  Minus,
+  AlertOctagon,
 } from 'lucide-react';
 import { EmpresaPESV } from '../types/pesv';
 import { exportarLibroPESVExcel } from '../utils/excelExporter';
@@ -29,23 +26,73 @@ interface CompanyDetailModalProps {
   onIrAReportes: (empresa: EmpresaPESV) => void;
 }
 
+const INDICADORES_MODAL = [
+  { 
+    id: '1', titulo: 'Indicador 1: Tasa de Siniestros Viales (TSV)', freq: 'TRIMESTRAL',
+    sub: [
+      { n: 'I1_Nivel1_n', d: 'I1_km', rep: 'I1_TSV_Nivel1', mult: 1000000, type: 'division', label: 'Nivel 1 (Fatalidades)' },
+      { n: 'I1_Nivel2_n', d: 'I1_km', rep: 'I1_TSV_Nivel2', mult: 1000000, type: 'division', label: 'Nivel 2 (Heridos Graves)' },
+      { n: 'I1_Nivel3_n', d: 'I1_km', rep: 'I1_TSV_Nivel3', mult: 1000000, type: 'division', label: 'Nivel 3 (Heridos Leves)' },
+      { n: 'I1_Nivel4_n', d: 'I1_km', rep: 'I1_TSV_Nivel4', mult: 1000000, type: 'division', label: 'Nivel 4 (Choques Simples)' }
+    ]
+  },
+  { 
+    id: '2', titulo: 'Indicador 2: Costos de Siniestros Viales ($SVT)', freq: 'TRIMESTRAL',
+    sub: [
+      { n: 'I2_Nivel1_directos', d: 'I2_Nivel1_indirectos', rep: 'I2_SV_Nivel1', type: 'suma', label: 'Costos Nivel 1' },
+      { n: 'I2_Nivel2_directos', d: 'I2_Nivel2_indirectos', rep: 'I2_SV_Nivel2', type: 'suma', label: 'Costos Nivel 2' },
+      { n: 'I2_Nivel3_directos', d: 'I2_Nivel3_indirectos', rep: 'I2_SV_Nivel3', type: 'suma', label: 'Costos Nivel 3' },
+      { n: 'I2_Nivel4_directos', d: 'I2_Nivel4_indirectos', rep: 'I2_SV_Nivel4', type: 'suma', label: 'Costos Nivel 4' }
+    ]
+  },
+  { 
+    id: '3', titulo: 'Indicador 3: Riesgos Viales Identificados', freq: 'ANUAL',
+    sub: [
+      { n: 'I3_RSVI_fin', d: 'I3_RSVI_inicio', rep: 'I3_RSVI', type: 'resta', label: 'RSVI (Todos los Riesgos)' },
+      { n: 'I3_GRV_fin', d: 'I3_GRV_inicio', rep: 'I3_GRV', type: 'resta', label: 'GRV (Riesgos Altos)' }
+    ]
+  },
+  { id: '4', titulo: 'Indicador 4: Cumplimiento de Metas del PESV', freq: 'TRIMESTRAL', sub: [{ n: 'I4_nMetasAlcanzadas', d: 'I4_nMetasDefinidas', rep: 'I4_CM', mult: 100, type: 'division', label: 'Cumplimiento de Metas (%)' }] },
+  { id: '5', titulo: 'Indicador 5: Cumplimiento Plan Anual de Trabajo', freq: 'TRIMESTRAL', sub: [{ n: 'I5_nActividadesEjecutadas', d: 'I5_nActividadesProgramadas', rep: 'I5_CPlan', mult: 100, type: 'division', label: 'Plan de Trabajo (%)' }] },
+  { id: '6', titulo: 'Indicador 6: % Exceso de Jornadas Laborales', freq: 'MENSUAL', sub: [{ n: 'I6_nEJLdiarias', d: 'I6_sumaDiasTrabajados', rep: 'I6_%EJLC', mult: 100, type: 'division', label: 'Exceso Jornadas (%)' }] },
+  { id: '7', titulo: 'Indicador 7: Cobertura Gestión de Velocidad', freq: 'MENSUAL', sub: [{ n: 'I7_nIncluidos', d: 'I7_nUtilizados', rep: 'I7_nDe', mult: 100, type: 'division', label: 'Cobertura GVE (%)' }] },
+  { id: '8', titulo: 'Indicador 8: Excesos Límite de Velocidad', freq: 'MENSUAL', sub: [{ n: 'I8_nExcesoVel', d: 'I8_nDesplazamientos', rep: 'I8_ELVL', mult: 100, type: 'division', label: 'Excesos Velocidad ELVL (%)' }] },
+  { id: '9', titulo: 'Indicador 9: Inspecciones Preoperacionales', freq: 'MENSUAL', sub: [{ n: 'I9_nInspeccionados', d: 'I9_nVehículos', d2: 'I9_nVehiculos', rep: 'I9_IDP', mult: 100, type: 'division', label: 'Inspecciones IDP (%)' }] },
+  { id: '10', titulo: 'Indicador 10: Mantenimiento Preventivo CPMVh', freq: 'TRIMESTRAL', sub: [{ n: 'I10_nActividades', d: 'I10_nProgramadas', rep: 'I10_CPMV', mult: 100, type: 'division', label: 'Mantenimiento CPMVh (%)' }] },
+  { id: '11', titulo: 'Indicador 11: Cumplimiento Formación CPFSV', freq: 'TRIMESTRAL', sub: [{ n: 'I11_nEjecutadas', d: 'I11_nProgramadas', rep: 'I11_CPFSV', mult: 100, type: 'division', label: 'Cumplimiento Formación (%)' }] },
+  { id: '12', titulo: 'Indicador 12: Cobertura Formación', freq: 'TRIMESTRAL', sub: [{ n: 'I12_nCapacitados', d: 'I12_nTotal', rep: 'I12_CPF', mult: 100, type: 'division', label: 'Cobertura Formación (%)' }] },
+  { id: '13', titulo: 'Indicador 13: Cierre de No Conformidades', freq: 'ANUAL', sub: [{ n: 'I13_NCcerradas', d: 'I13_NCidentificadas', rep: 'I13_NCAC', mult: 100, type: 'division', label: 'Cierre NCAC (%)' }] }
+];
+
+const OBTENER_PERIODOS_MODAL = (freq: string) => {
+  if (freq === 'TRIMESTRAL') return [
+    { label: 'T1', suf: 'primer_trimestre' }, { label: 'T2', suf: 'segundo_trimestre' },
+    { label: 'T3', suf: 'tercer_trimestre' }, { label: 'T4', suf: 'cuarto_trimestre' },
+    { label: 'Año', suf: 'año' }
+  ];
+  if (freq === 'MENSUAL') return [
+    { label: 'Ene', suf: 'enero' }, { label: 'Feb', suf: 'febrero' }, { label: 'Mar', suf: 'marzo' },
+    { label: 'Abr', suf: 'abril' }, { label: 'May', suf: 'mayo' }, { label: 'Jun', suf: 'junio' },
+    { label: 'Jul', suf: 'julio' }, { label: 'Ago', suf: 'agosto' }, { label: 'Sep', suf: 'septiembre' },
+    { label: 'Oct', suf: 'octubre' }, { label: 'Nov', suf: 'noviembre' }, { label: 'Dic', suf: 'diciembre' },
+    { label: 'Año', suf: 'año' }
+  ];
+  return [{ label: 'Acumulado Año', suf: 'año' }];
+};
+
 export const CompanyDetailModal: React.FC<CompanyDetailModalProps> = ({
   empresa,
-  todasLasEmpresas = [],
-  onSeleccionarEmpresa,
   onClose,
   onIrAAsistencia,
   onIrAReportes,
 }) => {
   if (!empresa) return null;
 
-  const reportesHistoricos = todasLasEmpresas
-    .filter(e => e.numeroDocumento === empresa.numeroDocumento)
-    .sort((a, b) => b.anoReporte - a.anoReporte);
+  const data = empresa.datosEstandarizados || {};
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200">
+      <div className="bg-white rounded-2xl max-w-5xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200">
         {/* Header Modal */}
         <div className="sticky top-0 bg-slate-900 text-white px-6 py-4 rounded-t-2xl flex items-center justify-between z-10">
           <div>
@@ -84,8 +131,7 @@ export const CompanyDetailModal: React.FC<CompanyDetailModalProps> = ({
         </div>
 
         <div className="p-6 space-y-6 text-xs text-slate-800">
-          {/* Oculto el Historial Interactivo por brevedad visual, asumiendo lo dejas igual */}
-          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <History className="w-4 h-4 text-indigo-600" />
               <span className="font-bold text-slate-900 text-xs">Año de Autogestión Seleccionado:</span>
@@ -145,97 +191,118 @@ export const CompanyDetailModal: React.FC<CompanyDetailModalProps> = ({
             </div>
           </div>
 
-          {/* Tabla de Indicadores */}
-          <div className="border border-slate-200 rounded-xl overflow-hidden">
-            <div className="bg-slate-100 px-4 py-2.5 font-bold text-slate-800 flex items-center justify-between">
-              <span className="flex items-center gap-1.5">
-                <Calculator className="w-4 h-4 text-blue-600" />
-                Matriz de Indicadores PESV (Medición ± Incertidumbre δx)
-              </span>
+          {/* Sábana Completa de Indicadores 1 al 13 con Auditoría Periódica */}
+          <div className="space-y-4 pt-2">
+            <div className="flex items-center gap-2 pb-2 border-b border-slate-200">
+              <Calculator className="w-5 h-5 text-blue-600" />
+              <h4 className="font-bold text-slate-900 text-sm">
+                Auditoría Integral de Indicadores PESV (1 al 13): Valores Calculados vs. Reportados
+              </h4>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-y divide-slate-100 font-mono text-center">
-              <div className="p-3">
-                <span className="text-[10px] text-slate-500 font-sans block">TSV Total</span>
-                <span className="font-bold text-slate-900 text-sm">{empresa.indicadores.tsvTotal.toFixed(2)}</span>
-                <span className="text-[10px] text-slate-400 block">± {empresa.deltasIncertidumbre.tsvTotal || 0}</span>
-              </div>
-              <div className="p-3">
-                <span className="text-[10px] text-slate-500 font-sans block">Metas PESV</span>
-                <span className="font-bold text-slate-900 text-sm">{empresa.indicadores.cmPesv.toFixed(1)}%</span>
-                <span className="text-[10px] text-slate-400 block">± {empresa.deltasIncertidumbre.cmPesv || 0}%</span>
-              </div>
-              <div className="p-3">
-                <span className="text-[10px] text-slate-500 font-sans block">Preoperacional IDP</span>
-                <span className="font-bold text-slate-900 text-sm">{empresa.indicadores.idp.toFixed(1)}%</span>
-              </div>
-              <div className="p-3">
-                <span className="text-[10px] text-slate-500 font-sans block">Mantenimiento CPMVh</span>
-                <span className="font-bold text-slate-900 text-sm">{empresa.indicadores.cpmvh.toFixed(1)}%</span>
-              </div>
-            </div>
-          </div>
 
-          {/* Desglose Fáctico de Niveles de Pérdida (NUEVO COMPONENTE) */}
-          <div className="border border-slate-200 rounded-xl overflow-hidden mt-4 shadow-sm">
-            <div className="bg-slate-100 px-4 py-2.5 font-bold text-slate-800 flex items-center justify-between">
-              <span className="flex items-center gap-1.5">
-                <ShieldAlert className="w-4 h-4 text-red-600" />
-                Desglose Siniestralidad y Costos por Nivel de Pérdida (Ind 1 y 2)
-              </span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
-                <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
-                  <tr>
-                    <th className="py-2.5 px-4 font-semibold">Nivel de Pérdida</th>
-                    <th className="py-2.5 px-4 font-semibold text-right">Cant. Siniestros</th>
-                    <th className="py-2.5 px-4 font-semibold text-right">Tasa TSV(n)</th>
-                    <th className="py-2.5 px-4 font-semibold text-right">Costos Directos</th>
-                    <th className="py-2.5 px-4 font-semibold text-right">Costos Indirectos</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-mono">
-                  {[
-                    { n: 1, label: 'Nivel 1 (Fatalidades)', tsv: empresa.indicadores.tsvNivel1, cant: empresa.indicadores.nNivel1, cd: empresa.indicadores.costosNivel1Directos, ci: empresa.indicadores.costosNivel1Indirectos },
-                    { n: 2, label: 'Nivel 2 (Graves >30d)', tsv: empresa.indicadores.tsvNivel2, cant: empresa.indicadores.nNivel2, cd: empresa.indicadores.costosNivel2Directos, ci: empresa.indicadores.costosNivel2Indirectos },
-                    { n: 3, label: 'Nivel 3 (Leves ≤30d)', tsv: empresa.indicadores.tsvNivel3, cant: empresa.indicadores.nNivel3, cd: empresa.indicadores.costosNivel3Directos, ci: empresa.indicadores.costosNivel3Indirectos },
-                    { n: 4, label: 'Nivel 4 (Choques/Daños)', tsv: empresa.indicadores.tsvNivel4, cant: empresa.indicadores.nNivel4, cd: empresa.indicadores.costosNivel4Directos, ci: empresa.indicadores.costosNivel4Indirectos },
-                  ].map(lvl => (
-                    <tr key={lvl.n} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="py-2.5 px-4 font-sans font-medium text-slate-800">{lvl.label}</td>
-                      <td className="py-2.5 px-4 text-right text-slate-700">{lvl.cant || 0}</td>
-                      <td className="py-2.5 px-4 text-right font-bold text-blue-700">{Number(lvl.tsv || 0).toFixed(2)}</td>
-                      <td className="py-2.5 px-4 text-right text-slate-600">${Number(lvl.cd || 0).toLocaleString()}</td>
-                      <td className="py-2.5 px-4 text-right text-slate-600">${Number(lvl.ci || 0).toLocaleString()}</td>
+            {INDICADORES_MODAL.map((ind) => {
+              let indicadorTieneError = false;
+              const periodos = OBTENER_PERIODOS_MODAL(ind.freq);
+
+              const filasAuditoria = ind.sub.flatMap(cfg => {
+                return periodos.map(per => {
+                  const n = Number(data[`${cfg.n}_${per.suf}`]) || 0;
+                  const d = Number(data[`${cfg.d}_${per.suf}`]) || Number(data[`${(cfg as any).d2}_${per.suf}`]) || 0;
+                  const reportado = Number(data[`${cfg.rep}_${per.suf}`]);
+
+                  if (!n && !d && isNaN(reportado)) return null;
+
+                  const valReportado = isNaN(reportado) ? 0 : reportado;
+                  let valCalculado = 0;
+
+                  if (cfg.type === 'division') {
+                    const multVal = (cfg as any).mult || 1;
+                    valCalculado = d > 0 ? (n / d) * multVal : 0;
+                  } else if (cfg.type === 'suma') {
+                    valCalculado = n + d;
+                  } else if (cfg.type === 'resta') {
+                    valCalculado = n - d;
+                  }
+
+                  const diferencia = Math.abs(valCalculado - valReportado);
+                  const limiteError = cfg.type === 'division' ? 0.5 : 1;
+                  const hayError = (cfg.type === 'division' ? d > 0 : (n > 0 || d > 0)) && diferencia > limiteError;
+
+                  if (hayError) indicadorTieneError = true;
+
+                  return (
+                    <tr key={`${cfg.label}-${per.suf}`} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50">
+                      <td className="py-2 px-3 text-[11px] font-sans text-slate-700 font-medium">{cfg.label}</td>
+                      <td className="py-2 px-3 text-[11px] font-mono font-bold text-slate-500 bg-slate-50/50">{per.label}</td>
+                      <td className="py-2 px-3 text-right text-[11px] font-mono text-slate-600">
+                        {cfg.type !== 'resta' && cfg.type !== 'suma' ? `${n.toLocaleString()} / ${d.toLocaleString()}` : `${n.toLocaleString()} | ${d.toLocaleString()}`}
+                      </td>
+                      <td className="py-2 px-3 text-right text-[11px] font-mono font-bold text-blue-700 bg-blue-50/30">
+                        {valCalculado.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                      </td>
+                      <td className={`py-2 px-3 text-right text-[11px] font-mono font-bold transition-colors ${
+                        hayError 
+                          ? 'text-red-700 bg-red-50 underline decoration-red-400 decoration-wavy underline-offset-2' 
+                          : 'text-emerald-700 bg-emerald-50/30'
+                      }`}>
+                        {valReportado.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                      </td>
                     </tr>
-                  ))}
-                  <tr className="bg-slate-100/50 font-bold">
-                    <td className="py-2.5 px-4 font-sans text-slate-900">Total General Registrado</td>
-                    <td className="py-2.5 px-4 text-right">
-                      {Number(empresa.indicadores.nNivel1 || 0) + Number(empresa.indicadores.nNivel2 || 0) + Number(empresa.indicadores.nNivel3 || 0) + Number(empresa.indicadores.nNivel4 || 0)}
-                    </td>
-                    <td className="py-2.5 px-4 text-right text-blue-900">{Number(empresa.indicadores.tsvTotal || 0).toFixed(2)}</td>
-                    <td className="py-2.5 px-4 text-right text-slate-900">${Number(empresa.indicadores.costosDirectos || 0).toLocaleString()}</td>
-                    <td className="py-2.5 px-4 text-right text-slate-900">${Number(empresa.indicadores.costosIndirectos || 0).toLocaleString()}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
+                  );
+                }).filter(Boolean);
+              });
 
-          {/* Infracciones de Tránsito */}
-          <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50">
-            <span className="font-bold text-slate-900 block mb-2">Comparendos ({empresa.infracciones.totalInfracciones} totales)</span>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-[11px]">
-              <div className="p-2 rounded bg-white border border-slate-200">
-                <span className="text-slate-500 font-sans block text-[10px]">C29 (Velocidad):</span>
-                <span className="font-bold text-red-700">{empresa.infracciones.C29}</span>
-              </div>
-              <div className="p-2 rounded bg-white border border-slate-200">
-                <span className="text-slate-500 font-sans block text-[10px]">C14 (Pico y Placa):</span>
-                <span className="font-bold text-slate-800">{empresa.infracciones.C14}</span>
-              </div>
-            </div>
+              if (filasAuditoria.length === 0) return null;
+
+              return (
+                <div key={ind.id} className={`bg-white border rounded-xl overflow-hidden shadow-xs transition-colors ${indicadorTieneError ? 'border-red-200' : 'border-slate-200'}`}>
+                  <div className={`px-4 py-2.5 border-b flex justify-between items-center ${indicadorTieneError ? 'bg-red-50/50 border-red-100' : 'bg-slate-50 border-slate-200'}`}>
+                    <h5 className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+                      <Calculator className="w-3.5 h-3.5 text-blue-600" />
+                      {ind.titulo}
+                    </h5>
+                    {indicadorTieneError ? (
+                      <span className="flex items-center gap-1 text-[10px] uppercase font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded">
+                        <AlertOctagon className="w-3 h-3" /> Incoherencia Detectada
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-[10px] uppercase font-bold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded">
+                        <CheckCircle2 className="w-3 h-3" /> Consistente
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="bg-slate-100 text-slate-500 text-[10px] uppercase tracking-wider">
+                          <th className="py-2 px-3 font-semibold">Sub-Nivel / Variable</th>
+                          <th className="py-2 px-3 font-semibold">Periodo</th>
+                          <th className="py-2 px-3 font-semibold text-right">Variables Base (N / D)</th>
+                          <th className="py-2 px-3 font-semibold text-right bg-blue-100/50">Valor Calculado</th>
+                          <th className="py-2 px-3 font-semibold text-right">Valor Reportado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filasAuditoria}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {indicadorTieneError && (
+                    <div className="bg-red-50 p-3 border-t border-red-100 flex items-start gap-2.5">
+                      <AlertOctagon className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-bold text-red-900 text-[11px]">Alerta de Asistencia Técnica (Cálculo Incorrecto): </span>
+                        <span className="text-[11px] text-red-700">
+                          La organización reportó un valor final diferente al calculado mediante sus variables base. Los periodos con error se encuentran subrayados en rojo.
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           <div className="pt-4 border-t border-slate-200 flex items-center justify-between">
